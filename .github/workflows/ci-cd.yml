@@ -1,0 +1,101 @@
+name: CI/CD — Test, Build & Release
+
+on:
+  push:
+    branches:
+      - main
+      - prod
+  pull_request:
+    branches:
+      - main
+      - prod
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # 1. Автоматический прогон сборки и тестов (Vitest) на каждое изменение в main и prod
+  test:
+    name: Run Vitest Suite & TypeCheck
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript & copy assets
+        run: npm run build
+
+      - name: Run automated tests (Vitest)
+        run: npm test
+
+  # 2. Сборка установочников под macOS (.dmg/.zip) и Windows (.exe) и публикация в GitHub Releases (только для ветки prod)
+  release:
+    name: Build & Publish Release (${{ matrix.os }})
+    needs: test
+    if: github.ref == 'refs/heads/prod' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Read version from package.json
+        id: pkg
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Package macOS application (.dmg & .zip)
+        if: matrix.os == 'macos-latest'
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --mac --publish never
+
+      - name: Package Windows application (.exe NSIS & Portable)
+        if: matrix.os == 'windows-latest'
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --win --publish never
+
+      - name: Publish binaries to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.pkg.outputs.tag }}
+          name: IPShield ${{ steps.pkg.outputs.tag }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          files: |
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

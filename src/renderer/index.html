@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IPShield</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Шапка: место слева под системные кнопки окна 🔴🟡🟢 + Лого + переключатель -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-logo">🛡️</div>
+        <span class="brand-title">IPShield</span>
+      </div>
+
+      <div class="segmented no-drag">
+        <button id="tab-main" class="seg-btn active">Главная</button>
+        <button id="tab-ips" class="seg-btn">IP-адреса</button>
+      </div>
+    </header>
+
+    <!-- ЭКРАН 1: ГЛАВНАЯ -->
+    <main id="view-main" class="main-scroll-view">
+      <!-- Верхняя карточка IP + Кнопка «Разрешить IP» наверху -->
+      <div id="ip-card" class="ip-card state-idle">
+        <div class="ip-card-top">
+          <div>
+            <div class="status-line">
+              <span id="status-dot" class="status-dot dot-idle"></span>
+              <span id="status-label" class="status-text text-idle">Проверка...</span>
+              <span id="ip-label-tag" class="ip-label-tag"></span>
+            </div>
+            <div id="current-ip" class="ip-value" title="Нажмите, чтобы проверить IP">...</div>
+          </div>
+
+          <button id="btn-allow-top" class="btn-allow-top">＋ Разрешить IP</button>
+        </div>
+
+        <!-- Раскрывающийся выбор: для каких правил разрешить текущий IP -->
+        <div id="quick-allow-picker" class="quick-picker hidden">
+          <div class="quick-picker-header">
+            <span>Выберите правила:</span>
+            <button id="btn-select-all-picker" class="link-btn">Выбрать все</button>
+          </div>
+          <div id="picker-chips" class="chips-wrap"></div>
+          <button id="btn-confirm-allow" class="primary-btn emerald">Сохранить</button>
+        </div>
+      </div>
+
+      <!-- Баннер однократной выдачи прав на сетевую блокировку доменов (если не выдано) -->
+      <div id="elevation-banner" class="elevation-banner hidden">
+        <span>Включить сетевой фильтр доменов в браузере</span>
+        <button id="btn-elevate" class="elevation-btn">Разрешить</button>
+      </div>
+
+      <!-- Заголовок правил + кнопка «＋ Добавить» -->
+      <div class="section-bar">
+        <span class="section-title">Правила</span>
+        <button id="btn-open-add" class="link-btn">＋ Добавить</button>
+      </div>
+
+      <!-- Модальный блок добавления и редактирования правила: переключатель Приложения | Домены + Чипы -->
+      <div id="add-modal" class="add-modal hidden">
+        <div class="add-modal-top">
+          <div class="segmented">
+            <button id="mode-btn-app" class="seg-btn active">
+              <span>Приложения</span>
+              <span id="badge-app-count" class="seg-badge hidden">0</span>
+            </button>
+            <button id="mode-btn-domain" class="seg-btn">
+              <span>Домены</span>
+              <span id="badge-domain-count" class="seg-badge hidden">0</span>
+            </button>
+          </div>
+          <button id="btn-close-add" class="close-btn">✕</button>
+        </div>
+
+        <input id="editor-rule-name" type="text" class="text-input" placeholder="Название правила (заполнится само или введите своё)" />
+
+        <!-- Вкладка А: Приложения и процессы (Чипы + выбор из шаблонов и программ на ПК) -->
+        <div id="add-mode-app" class="editor-tab-pane">
+          <div id="proc-tag-box" class="tag-box">
+            <div id="editor-proc-chips" class="tag-chips-inline"></div>
+            <input id="proc-tag-input" type="text" class="tag-input-field" placeholder="Выберите из списка ниже или введите процесс..." />
+          </div>
+
+          <input id="app-search-input" type="text" class="text-input" placeholder="Поиск приложения (Claude, Codex, Cursor...)" />
+          <div id="detected-apps-list" class="app-picker-list"></div>
+        </div>
+
+        <!-- Вкладка Б: Домены (Tag-Input чипы с валидацией) -->
+        <div id="add-mode-domain" class="editor-tab-pane hidden">
+          <div id="domain-tag-box" class="tag-box">
+            <div id="editor-domain-chips" class="tag-chips-inline"></div>
+            <input id="domain-tag-input" type="text" class="tag-input-field mono" placeholder="Введите домен (claude.ai) и нажмите Enter..." />
+          </div>
+          <div id="domain-error-msg" class="error-text hidden"></div>
+        </div>
+
+        <div id="rule-editor-error" class="error-text hidden"></div>
+        <button id="btn-save-rule" class="primary-btn">Сохранить правило</button>
+      </div>
+
+      <!-- Скроллящийся список правил -->
+      <div id="rules-list" class="scroll-area"></div>
+    </main>
+
+    <!-- ЭКРАН 2: IP-АДРЕСА -->
+    <main id="view-ips" class="main-scroll-view hidden">
+      <!-- Форма добавления IP со строгой валидацией и выбором правил сразу при добавлении -->
+      <div class="ip-add-box">
+        <div class="ip-add-bar">
+          <input id="input-new-ip" type="text" class="text-input" placeholder="IP (напр. 185.212.44.19)" style="flex: 1; font-family: 'SF Mono', monospace;" />
+          <input id="input-new-label" type="text" class="text-input" placeholder="Метка (VPN)" style="width: 120px;" />
+        </div>
+
+        <div id="ip-error-msg" class="error-text hidden"></div>
+
+        <!-- Выбор правил/приложений прямо перед добавлением IP -->
+        <div id="new-ip-rules-section" style="display: flex; flex-direction: column; gap: 6px;">
+          <div class="quick-picker-header">
+            <span>Привязать к правилам:</span>
+            <button id="btn-new-ip-select-all" class="link-btn">Все</button>
+          </div>
+          <div id="new-ip-chips" class="chips-wrap"></div>
+        </div>
+
+        <button id="btn-add-ip" class="primary-btn">＋ Добавить IP-адрес</button>
+      </div>
+
+      <div id="ips-list" class="scroll-area"></div>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

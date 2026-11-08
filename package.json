@@ -1,0 +1,60 @@
+{
+  "name": "ipshield",
+  "productName": "IPShield",
+  "version": "1.0.0",
+  "description": "Strict IP-bound firewall and process guard for Claude, Codex, and custom apps/domains on macOS & Windows",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "build": "tsc && node scripts/copy-assets.js",
+    "watch": "tsc -w",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "start": "npm run build && node scripts/launch.js",
+    "dev": "npm run build && node scripts/launch.js",
+    "pack:mac": "npm run build && electron-builder --mac",
+    "pack:win": "npm run build && electron-builder --win"
+  },
+  "keywords": [
+    "vpn",
+    "kill-switch",
+    "firewall",
+    "claude",
+    "codex",
+    "ipshield"
+  ],
+  "author": "IPShield",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.6.3",
+    "vitest": "^5.0.5"
+  },
+  "build": {
+    "appId": "com.ipshield.app",
+    "productName": "IPShield",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*"
+    ],
+    "mac": {
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.utilities",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "icon": "assets/icon.png",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    }
+  }
+}
