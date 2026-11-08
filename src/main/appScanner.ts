@@ -126,9 +126,7 @@ export async function scanAvailableApps(): Promise<DetectedAppItem[]> {
           if (fs.existsSync(full)) {
             foundPaths.push(full);
             seenAppPaths.add(full);
-            // For presets other than Claude/Codex, or if native icon is desired, we still have preset.defaultIcon
-            // Wait: user specifically noted Claude should have Claude icon and Codex should have Codex icon,
-            // and installed apps should have their own icons.
+            // Preset icons are retained for Claude and Codex; native app icons are used for other apps
             if (preset.presetKey !== 'claude' && preset.presetKey !== 'codex') {
               const nativeIcon = await getNativeIconDataUrl(full);
               if (nativeIcon) resolvedIcon = nativeIcon;

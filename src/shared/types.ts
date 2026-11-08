@@ -58,5 +58,6 @@ export interface RuntimeSnapshot {
   ruleStatuses: Record<string, RuleRuntimeStatus>;
   firewallElevated: boolean;
   firewallError: string | null;
+  processGuardError: string | null;
 }
 

@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs';
+import { pathToFileURL } from 'url';
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, Tray } from 'electron';
 import { Store } from './store';
 import { IpMonitor } from './ipMonitor';
@@ -7,6 +8,10 @@ import { ProcessGuard } from './processGuard';
 import { DomainFirewall } from './domainFirewall';
 import { scanAvailableApps } from './appScanner';
 import { RuleRuntimeStatus, RuntimeSnapshot, ShieldRule } from '../shared/types';
+import {
+  validateAndSanitizeRule,
+  validateAndSanitizeIpEntry
+} from '../shared/validation';
 
 if (app && typeof app.setName === 'function') {
   app.setName('IPShield');
@@ -143,7 +148,8 @@ function buildSnapshot(): RuntimeSnapshot {
     ips,
     ruleStatuses,
     firewallElevated: domainFirewall.isElevated(),
-    firewallError: domainFirewall.getLastError()
+    firewallError: domainFirewall.getLastError(),
+    processGuardError: processGuard.getLastError()
   };
 }
 
@@ -167,7 +173,7 @@ function updateTrayAppearance(snapshot: RuntimeSnapshot): void {
     statusText = `Открыто ${openCount} из ${totalRules}`;
   }
 
-  const traySignature = `${color}|${statusText}|${snapshot.currentIp}`;
+  const traySignature = `${color}|${statusText}|${snapshot.currentIp}|${snapshot.firewallElevated}`;
   if (traySignature === lastTraySignature) {
     return;
   }
@@ -184,7 +190,7 @@ function updateTrayAppearance(snapshot: RuntimeSnapshot): void {
   }
   tray.setToolTip(`IPShield • ${statusText} (${snapshot.currentIp})`);
 
-  const contextMenu = Menu.buildFromTemplate([
+  const menuTemplate: Electron.MenuItemConstructorOptions[] = [
     {
       label: statusText,
       enabled: false
@@ -197,22 +203,33 @@ function updateTrayAppearance(snapshot: RuntimeSnapshot): void {
     {
       label: 'Открыть IPShield',
       click: () => {
-        void ipMonitor.checkNow().then(() => runEnforcementCycle());
+        void ipMonitor.checkNow(true, true).then(() => runEnforcementCycle());
         showMainWindow();
       }
-    },
+    }
+  ];
+
+  if (snapshot.firewallElevated) {
+    menuTemplate.push({
+      label: 'Отозвать доступ к hosts',
+      click: () => {
+        void domainFirewall.revokeElevation().then(() => runEnforcementCycle(true));
+      }
+    });
+  }
+
+  menuTemplate.push(
     { type: 'separator' },
     {
       label: 'Выйти',
       accelerator: process.platform === 'darwin' ? 'Command+Q' : 'Ctrl+Q',
-      click: async () => {
-        isQuitting = true;
-        await processGuard.unfreezeAll();
-        await domainFirewall.clearAllBlocks();
-        app.quit();
+      click: () => {
+        void shutdown();
       }
     }
-  ]);
+  );
+
+  const contextMenu = Menu.buildFromTemplate(menuTemplate);
 
   tray.setContextMenu(contextMenu);
 }
@@ -224,7 +241,8 @@ function getSnapshotSignature(snapshot: RuntimeSnapshot): string {
     ips: snapshot.ips,
     ruleStatuses: snapshot.ruleStatuses,
     firewallElevated: snapshot.firewallElevated,
-    firewallError: snapshot.firewallError
+    firewallError: snapshot.firewallError,
+    processGuardError: snapshot.processGuardError
   });
 }
 
@@ -255,10 +273,30 @@ async function runEnforcementCycle(forceBroadcast: boolean = false): Promise<Run
   const currentIp = ipMonitor.getCurrentIp();
   const allowedMap = computeAllowedMap(currentIp);
 
+  // Exclude current Electron application and helper processes by PID (S-5)
+  const selfPids: number[] = [process.pid];
+  try {
+    const metrics = app.getAppMetrics();
+    for (const m of metrics) {
+      if (m.pid > 0) selfPids.push(m.pid);
+    }
+  } catch {
+    // ignore
+  }
+  processGuard.setIgnoredPids(selfPids);
+
   cachedFrozenByRule = await processGuard.enforce(rules, allowedMap);
   await domainFirewall.syncDomains(rules, allowedMap);
 
   return broadcastSnapshot(forceBroadcast);
+}
+
+const expectedRendererHref = pathToFileURL(path.join(__dirname, '../renderer/index.html')).href;
+
+function isAuthorizedSender(event: Electron.IpcMainInvokeEvent): boolean {
+  const url = (event.senderFrame?.url || '').split(/[?#]/)[0];
+  // Strictly compare against the exact file URL of our renderer index.html (S-3)
+  return url === expectedRendererHref;
 }
 
 function createMainWindow(): void {
@@ -290,13 +328,25 @@ function createMainWindow(): void {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true
     }
   });
 
   if (isWin) {
     mainWindow.setMenuBarVisibility(false);
   }
+
+  // Prevent arbitrary navigation away from renderer (S-4)
+  mainWindow.webContents.on('will-navigate', event => {
+    event.preventDefault();
+  });
+
+  // Block opening external windows / popups from renderer (S-4)
+  mainWindow.webContents.setWindowOpenHandler(() => {
+    return { action: 'deny' };
+  });
 
   const htmlPath = path.join(__dirname, '../renderer/index.html');
   void mainWindow.loadFile(htmlPath);
@@ -325,63 +375,119 @@ function showMainWindow(): void {
 }
 
 function setupIpcHandlers(): void {
-  ipcMain.handle('ipshield:getSnapshot', async () => {
+  ipcMain.handle('ipshield:getSnapshot', async event => {
+    if (!isAuthorizedSender(event)) throw new Error('Unauthorized sender');
     return buildSnapshot();
   });
 
-  ipcMain.handle('ipshield:scanApps', async () => {
+  ipcMain.handle('ipshield:scanApps', async event => {
+    if (!isAuthorizedSender(event)) throw new Error('Unauthorized sender');
     return scanAvailableApps();
   });
 
-  ipcMain.handle('ipshield:addRule', async (_event, ruleInput: Omit<ShieldRule, 'id'>) => {
-    store.addRule(ruleInput);
+  ipcMain.handle('ipshield:addRule', async (event, ruleInput: Omit<ShieldRule, 'id'>) => {
+    if (!isAuthorizedSender(event)) throw new Error('Unauthorized sender');
+    const { valid, rule } = validateAndSanitizeRule(ruleInput);
+    if (valid && rule) {
+      store.addRule(rule);
+    }
     return runEnforcementCycle();
   });
 
-  ipcMain.handle('ipshield:updateRule', async (_event, rule: ShieldRule) => {
-    store.updateRule(rule);
+  ipcMain.handle('ipshield:updateRule', async (event, rule: ShieldRule) => {
+    if (!isAuthorizedSender(event)) throw new Error('Unauthorized sender');
+    const { valid, rule: cleanRule } = validateAndSanitizeRule(rule);
+    if (valid && cleanRule) {
+      store.updateRule(cleanRule);
+    }
     return runEnforcementCycle();
   });
 
-  ipcMain.handle('ipshield:removeRule', async (_event, ruleId: string) => {
-    store.removeRule(ruleId);
+  ipcMain.handle('ipshield:removeRule', async (event, ruleId: string) => {
+    if (!isAuthorizedSender(event)) throw new Error('Unauthorized sender');
+    if (typeof ruleId === 'string' && ruleId.trim()) {
+      store.removeRule(ruleId.trim());
+    }
     return runEnforcementCycle();
   });
 
   ipcMain.handle(
     'ipshield:addOrUpdateIp',
-    async (_event, payload: { ip: string; label?: string; ruleIds?: string[] }) => {
-      store.addOrUpdateIp(payload);
+    async (event, payload: { ip: string; label?: string; ruleIds?: string[] }) => {
+      if (!isAuthorizedSender(event)) throw new Error('Unauthorized sender');
+      const { valid, entry } = validateAndSanitizeIpEntry(payload);
+      if (valid && entry) {
+        store.addOrUpdateIp(entry);
+      }
       return runEnforcementCycle();
     }
   );
 
-  ipcMain.handle('ipshield:toggleRuleOnIp', async (_event, ip: string, ruleId: string) => {
-    store.toggleRuleOnIp(ip, ruleId);
+  ipcMain.handle('ipshield:toggleRuleOnIp', async (event, ip: string, ruleId: string) => {
+    if (!isAuthorizedSender(event)) throw new Error('Unauthorized sender');
+    if (typeof ip === 'string' && typeof ruleId === 'string') {
+      store.toggleRuleOnIp(ip, ruleId);
+    }
     return runEnforcementCycle();
   });
 
-  ipcMain.handle('ipshield:removeIp', async (_event, ip: string) => {
-    store.removeIp(ip);
+  ipcMain.handle('ipshield:removeIp', async (event, ip: string) => {
+    if (!isAuthorizedSender(event)) throw new Error('Unauthorized sender');
+    if (typeof ip === 'string') {
+      store.removeIp(ip);
+    }
     return runEnforcementCycle();
   });
 
-  ipcMain.handle('ipshield:refreshIp', async () => {
-    await ipMonitor.checkNow();
+  ipcMain.handle('ipshield:refreshIp', async event => {
+    if (!isAuthorizedSender(event)) throw new Error('Unauthorized sender');
+    await ipMonitor.checkNow(true, true);
     return runEnforcementCycle();
   });
 
-  ipcMain.handle('ipshield:enableFirewallAccess', async () => {
+  ipcMain.handle('ipshield:enableFirewallAccess', async event => {
+    if (!isAuthorizedSender(event)) throw new Error('Unauthorized sender');
     await domainFirewall.requestOneTimeElevation();
     return runEnforcementCycle();
   });
 
-  ipcMain.handle('ipshield:quitApp', async () => {
-    isQuitting = true;
-    await processGuard.unfreezeAll();
-    await domainFirewall.clearAllBlocks();
-    app.quit();
+  ipcMain.handle('ipshield:revokeFirewallAccess', async event => {
+    if (!isAuthorizedSender(event)) throw new Error('Unauthorized sender');
+    await domainFirewall.revokeElevation();
+    return runEnforcementCycle();
   });
+
+  ipcMain.handle('ipshield:quitApp', async event => {
+    if (!isAuthorizedSender(event)) throw new Error('Unauthorized sender');
+    await shutdown();
+  });
+}
+
+let isShuttingDown = false;
+async function shutdown(): Promise<void> {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  isQuitting = true;
+
+  if (enforceTimer) {
+    clearInterval(enforceTimer);
+    enforceTimer = null;
+  }
+  ipMonitor.stop();
+
+  try {
+    await processGuard.unfreezeAll();
+  } catch (err) {
+    console.error('[Main] Failed to unfreeze processes on shutdown:', err);
+  }
+
+  try {
+    await domainFirewall.clearAllBlocks();
+  } catch (err) {
+    console.error('[Main] Failed to clear hosts blocks on shutdown:', err);
+  }
+
+  app.quit();
 }
 
 app.whenReady().then(() => {
@@ -415,12 +521,7 @@ app.on('activate', () => {
 app.on('before-quit', async event => {
   if (!isQuitting) {
     event.preventDefault();
-    isQuitting = true;
-    if (enforceTimer) clearInterval(enforceTimer);
-    ipMonitor.stop();
-    await processGuard.unfreezeAll();
-    await domainFirewall.clearAllBlocks();
-    app.quit();
+    await shutdown();
   }
 });
 

@@ -2,6 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>IPShield</title>
   <link rel="stylesheet" href="styles.css" />
@@ -55,10 +56,16 @@
         <button id="btn-elevate" class="elevation-btn">Разрешить</button>
       </div>
 
-      <!-- Заголовок правил + кнопка «＋ Добавить» -->
+      <!-- Баннер ошибки сканера процессов (ps / PowerShell) -->
+      <div id="process-guard-banner" class="error-text hidden"></div>
+
+      <!-- Заголовок правил + кнопки «Отозвать права» и «＋ Добавить» -->
       <div class="section-bar">
         <span class="section-title">Правила</span>
-        <button id="btn-open-add" class="link-btn">＋ Добавить</button>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <button id="btn-revoke-elevate" class="link-btn hidden" title="Отозвать права записи в /etc/hosts">Отозвать права</button>
+          <button id="btn-open-add" class="link-btn">＋ Добавить</button>
+        </div>
       </div>
 
       <!-- Модальный блок добавления и редактирования правила: переключатель Приложения | Домены + Чипы -->

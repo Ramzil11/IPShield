@@ -92,21 +92,21 @@ function applyIpv4Mask(rawInput: string): string {
 }
 
 /**
- * Validates IPv4 (e.g. 185.212.44.19) or IPv6 address.
+ * Validates strict IPv4 address (e.g. 185.212.44.19).
  */
 function isValidIpAddress(raw: string): boolean {
+  if (typeof raw !== 'string') return false;
   const s = raw.trim();
   const ipv4Regex = /^((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/;
-  if (ipv4Regex.test(s)) return true;
-
-  const ipv6Regex = /^([0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}$/;
-  return ipv6Regex.test(s);
+  return ipv4Regex.test(s);
 }
 
 /**
  * Strips protocol/path and validates that the string is a real domain (e.g. claude.ai, api.openai.com).
+ * Rejects whitespace and newlines (S-2).
  */
 function normalizeAndValidateDomain(raw: string): string | null {
+  if (typeof raw !== 'string') return null;
   const cleaned = raw
     .trim()
     .toLowerCase()
@@ -116,11 +116,62 @@ function normalizeAndValidateDomain(raw: string): string | null {
 
   if (!cleaned) return null;
 
+  if (/[\s\r\n\t]/.test(cleaned)) {
+    return null;
+  }
+
   const domainRegex = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
   if (!domainRegex.test(cleaned)) {
     return null;
   }
   return cleaned;
+}
+
+const SYSTEM_PROCESS_DENYLIST_UI = new Set([
+  'launchd',
+  'kernel_task',
+  'systemd',
+  'init',
+  'loginwindow',
+  'finder',
+  'dock',
+  'windowserver',
+  'controlcenter',
+  'systemuiserver',
+  'explorer',
+  'explorer.exe',
+  'terminal',
+  'iterm2',
+  'iterm',
+  'alacritty',
+  'warp',
+  'bash',
+  'zsh',
+  'sh',
+  'fish',
+  'pwsh',
+  'powershell',
+  'powershell.exe',
+  'cmd.exe',
+  'taskmgr.exe',
+  'services.exe',
+  'csrss.exe',
+  'lsass.exe',
+  'svchost.exe',
+  'system'
+]);
+
+function isDeniedSystemProcessUi(procName: string): boolean {
+  const clean = procName.trim().toLowerCase();
+  if (!clean) return true;
+  const base = (clean.split(/[/\\]/).pop() || clean)
+    .replace(/^-+/, '')
+    .replace(/\.exe$/, '');
+  return (
+    SYSTEM_PROCESS_DENYLIST_UI.has(base) ||
+    SYSTEM_PROCESS_DENYLIST_UI.has(`${base}.exe`) ||
+    SYSTEM_PROCESS_DENYLIST_UI.has(clean)
+  );
 }
 
 function getAllowedIpsForRule(ruleId: string): AllowedIpEntry[] {
@@ -376,6 +427,19 @@ function renderTopCard(): void {
   );
   const banner = el<HTMLDivElement>('elevation-banner');
   banner.classList.toggle('hidden', !(hasBlockedDomains && !snap.firewallElevated));
+
+  const revokeBtn = el<HTMLButtonElement>('btn-revoke-elevate');
+  revokeBtn.classList.toggle('hidden', !snap.firewallElevated);
+
+  const procGuardBanner = el<HTMLDivElement>('process-guard-banner');
+  const guardError = snap.processGuardError || snap.firewallError;
+  if (guardError) {
+    procGuardBanner.textContent = guardError;
+    procGuardBanner.classList.remove('hidden');
+  } else {
+    procGuardBanner.textContent = '';
+    procGuardBanner.classList.add('hidden');
+  }
 }
 
 function renderAddModal(): void {
@@ -870,6 +934,11 @@ async function init(): Promise<void> {
     renderAll();
   };
 
+  el<HTMLButtonElement>('btn-revoke-elevate').onclick = async () => {
+    ui.snapshot = await window.ipshield.revokeFirewallAccess();
+    renderAll();
+  };
+
   el<HTMLButtonElement>('btn-open-add').onclick = () => {
     void openCreateRuleModal();
   };
@@ -911,9 +980,15 @@ async function init(): Promise<void> {
     if (ev.key === 'Enter' || ev.key === ',') {
       ev.preventDefault();
       const val = input.value.replace(/,/g, '').trim();
-      if (val && !ui.editorProcesses.includes(val)) {
-        ui.editorProcesses.push(val);
-        showRuleEditorError(null);
+      if (val) {
+        if (isDeniedSystemProcessUi(val)) {
+          showRuleEditorError(`Системный процесс «${val}» защищён от заморозки`);
+          return;
+        }
+        if (!ui.editorProcesses.includes(val)) {
+          ui.editorProcesses.push(val);
+          showRuleEditorError(null);
+        }
       }
       input.value = '';
       renderAddModal();
@@ -1024,7 +1099,9 @@ async function init(): Promise<void> {
           r: ui.snapshot.rules,
           i: ui.snapshot.ips,
           s: ui.snapshot.ruleStatuses,
-          e: ui.snapshot.firewallElevated
+          e: ui.snapshot.firewallElevated,
+          fe: ui.snapshot.firewallError,
+          pe: ui.snapshot.processGuardError
         })
       : '';
     const nextSig = JSON.stringify({
@@ -1032,7 +1109,9 @@ async function init(): Promise<void> {
       r: snap.rules,
       i: snap.ips,
       s: snap.ruleStatuses,
-      e: snap.firewallElevated
+      e: snap.firewallElevated,
+      fe: snap.firewallError,
+      pe: snap.processGuardError
     });
 
     ui.snapshot = snap;

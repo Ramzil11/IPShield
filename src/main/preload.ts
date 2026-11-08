@@ -13,6 +13,7 @@ export interface IpShieldBridge {
   removeIp: (ip: string) => Promise<RuntimeSnapshot>;
   refreshIp: () => Promise<RuntimeSnapshot>;
   enableFirewallAccess: () => Promise<RuntimeSnapshot>;
+  revokeFirewallAccess: () => Promise<RuntimeSnapshot>;
   quitApp: () => Promise<void>;
 }
 
@@ -32,8 +33,8 @@ const api: IpShieldBridge = {
   removeIp: ip => ipcRenderer.invoke('ipshield:removeIp', ip),
   refreshIp: () => ipcRenderer.invoke('ipshield:refreshIp'),
   enableFirewallAccess: () => ipcRenderer.invoke('ipshield:enableFirewallAccess'),
+  revokeFirewallAccess: () => ipcRenderer.invoke('ipshield:revokeFirewallAccess'),
   quitApp: () => ipcRenderer.invoke('ipshield:quitApp')
 };
 
 contextBridge.exposeInMainWorld('ipshield', api);
-

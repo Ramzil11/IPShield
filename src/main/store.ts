@@ -2,6 +2,10 @@ import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
 import { AllowedIpEntry, PersistedState, ShieldRule } from '../shared/types';
+import {
+  validateAndSanitizeRule,
+  validateAndSanitizeIpEntry
+} from '../shared/validation';
 
 const DEFAULT_STATE: PersistedState = {
   rules: [],
@@ -42,9 +46,30 @@ export class Store {
       if (fs.existsSync(this.filePath)) {
         const raw = fs.readFileSync(this.filePath, 'utf-8');
         const parsed = JSON.parse(raw) as Partial<PersistedState>;
+
+        const validRules: ShieldRule[] = [];
+        if (Array.isArray(parsed.rules)) {
+          for (const item of parsed.rules) {
+            const { valid, rule } = validateAndSanitizeRule(item);
+            if (valid && rule) {
+              validRules.push(rule);
+            }
+          }
+        }
+
+        const validIps: AllowedIpEntry[] = [];
+        if (Array.isArray(parsed.ips)) {
+          for (const item of parsed.ips) {
+            const { valid, entry } = validateAndSanitizeIpEntry(item);
+            if (valid && entry) {
+              validIps.push(entry);
+            }
+          }
+        }
+
         return {
-          rules: Array.isArray(parsed.rules) ? parsed.rules : [],
-          ips: Array.isArray(parsed.ips) ? parsed.ips : [],
+          rules: validRules,
+          ips: validIps,
           settings: {
             ...DEFAULT_STATE.settings,
             ...(parsed.settings || {})
@@ -52,60 +77,79 @@ export class Store {
         };
       }
     } catch (err) {
-      console.error('[Store] Failed to load config:', err);
+      console.error('[Store] Failed to load config, resetting to safe defaults:', err);
     }
     return JSON.parse(JSON.stringify(DEFAULT_STATE));
   }
 
   public save(): void {
+    const tmpPath = `${this.filePath}.tmp`;
     try {
-      fs.writeFileSync(this.filePath, JSON.stringify(this.data, null, 2), 'utf-8');
+      const json = JSON.stringify(this.data, null, 2);
+      fs.writeFileSync(tmpPath, json, 'utf-8');
+      fs.renameSync(tmpPath, this.filePath);
     } catch (err) {
-      console.error('[Store] Failed to save config:', err);
+      try {
+        if (fs.existsSync(tmpPath)) {
+          fs.unlinkSync(tmpPath);
+        }
+      } catch {
+        // ignore
+      }
+      try {
+        fs.writeFileSync(this.filePath, JSON.stringify(this.data, null, 2), 'utf-8');
+      } catch (fallbackErr) {
+        console.error('[Store] Failed to save config:', fallbackErr);
+      }
     }
   }
 
+  /**
+   * Returns a structural clone of the current persisted state without expensive JSON serialization (Q-6).
+   */
   public getState(): PersistedState {
-    return this.data;
+    return {
+      rules: this.data.rules.map(r => ({
+        ...r,
+        appPaths: [...r.appPaths],
+        processes: [...r.processes],
+        domains: [...r.domains]
+      })),
+      ips: this.data.ips.map(i => ({
+        ...i,
+        ruleIds: [...i.ruleIds]
+      })),
+      settings: { ...this.data.settings }
+    };
   }
 
   public addRule(input: Omit<ShieldRule, 'id'> & { id?: string }): ShieldRule {
-    const id = input.id || `rule-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const newRule: ShieldRule = {
-      id,
-      name: input.name.trim(),
-      type: input.type,
-      presetKey: input.presetKey || null,
-      iconDataUrl: input.iconDataUrl || null,
-      appPaths: Array.isArray(input.appPaths) ? input.appPaths : [],
-      processes: Array.isArray(input.processes) ? input.processes : [],
-      domains: Array.isArray(input.domains) ? input.domains : []
-    };
-    this.data.rules.push(newRule);
+    const { valid, rule, error } = validateAndSanitizeRule(input);
+    if (!valid || !rule) {
+      throw new Error(error || 'Некорректные параметры правила');
+    }
+
+    this.data.rules.push(rule);
     this.save();
-    return newRule;
+    return rule;
   }
 
   public updateRule(updated: ShieldRule): ShieldRule | null {
     const idx = this.data.rules.findIndex(r => r.id === updated.id);
     if (idx === -1) return null;
-    const prev = this.data.rules[idx];
-    const nextRule: ShieldRule = {
-      id: prev.id,
-      name: (updated.name || '').trim() || prev.name,
-      type: updated.type || prev.type,
-      presetKey: updated.presetKey !== undefined ? updated.presetKey : prev.presetKey,
-      iconDataUrl: updated.iconDataUrl || prev.iconDataUrl,
-      appPaths: Array.isArray(updated.appPaths) ? updated.appPaths : [],
-      processes: Array.isArray(updated.processes) ? updated.processes : [],
-      domains: Array.isArray(updated.domains) ? updated.domains : []
-    };
-    this.data.rules[idx] = nextRule;
+
+    const { valid, rule, error } = validateAndSanitizeRule(updated);
+    if (!valid || !rule) {
+      throw new Error(error || 'Некорректные параметры обновления правила');
+    }
+
+    this.data.rules[idx] = rule;
     this.save();
-    return nextRule;
+    return rule;
   }
 
   public removeRule(ruleId: string): void {
+    if (typeof ruleId !== 'string') return;
     this.data.rules = this.data.rules.filter(r => r.id !== ruleId);
     this.data.ips = this.data.ips.map(entry => ({
       ...entry,
@@ -115,46 +159,48 @@ export class Store {
   }
 
   public addOrUpdateIp(payload: { ip: string; label?: string; ruleIds?: string[] }): AllowedIpEntry[] {
-    const cleanIp = (payload.ip || '').trim();
-    if (!cleanIp) return this.data.ips;
+    const { valid, entry, error } = validateAndSanitizeIpEntry(payload);
+    if (!valid || !entry) {
+      throw new Error(error || 'Некорректный IP-адрес');
+    }
 
-    const existing = this.data.ips.find(item => item.ip === cleanIp);
+    const existing = this.data.ips.find(item => item.ip === entry.ip);
     if (existing) {
-      if (payload.label && payload.label.trim()) {
-        existing.label = payload.label.trim();
+      if (entry.label) {
+        existing.label = entry.label;
       }
-      if (Array.isArray(payload.ruleIds)) {
-        existing.ruleIds = Array.from(new Set([...existing.ruleIds, ...payload.ruleIds]));
+      if (Array.isArray(entry.ruleIds) && entry.ruleIds.length > 0) {
+        existing.ruleIds = Array.from(new Set([...existing.ruleIds, ...entry.ruleIds]));
       }
     } else {
       this.data.ips.unshift({
-        ip: cleanIp,
-        label: (payload.label || 'VPN').trim(),
-        ruleIds: Array.isArray(payload.ruleIds)
-          ? Array.from(new Set(payload.ruleIds))
-          : this.data.rules.map(r => r.id)
+        ip: entry.ip,
+        label: entry.label || 'VPN',
+        ruleIds: entry.ruleIds.length > 0 ? entry.ruleIds : this.data.rules.map(r => r.id)
       });
     }
     this.save();
-    return this.data.ips;
+    return this.getState().ips;
   }
 
   public toggleRuleOnIp(ip: string, ruleId: string): AllowedIpEntry[] {
-    const entry = this.data.ips.find(item => item.ip === ip);
-    if (!entry) return this.data.ips;
+    if (typeof ip !== 'string' || typeof ruleId !== 'string') return this.getState().ips;
+    const entry = this.data.ips.find(item => item.ip === ip.trim());
+    if (!entry) return this.getState().ips;
+
     if (entry.ruleIds.includes(ruleId)) {
       entry.ruleIds = entry.ruleIds.filter(id => id !== ruleId);
     } else {
       entry.ruleIds.push(ruleId);
     }
     this.save();
-    return this.data.ips;
+    return this.getState().ips;
   }
 
   public removeIp(ip: string): AllowedIpEntry[] {
-    this.data.ips = this.data.ips.filter(item => item.ip !== ip);
+    if (typeof ip !== 'string') return this.getState().ips;
+    this.data.ips = this.data.ips.filter(item => item.ip !== ip.trim());
     this.save();
-    return this.data.ips;
+    return this.getState().ips;
   }
 }
-

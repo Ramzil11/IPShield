@@ -45,6 +45,7 @@ interface RuntimeSnapshot {
   ruleStatuses: Record<string, RuleRuntimeStatus>;
   firewallElevated: boolean;
   firewallError: string | null;
+  processGuardError: string | null;
 }
 
 interface IpShieldBridge {
@@ -59,6 +60,7 @@ interface IpShieldBridge {
   removeIp: (ip: string) => Promise<RuntimeSnapshot>;
   refreshIp: () => Promise<RuntimeSnapshot>;
   enableFirewallAccess: () => Promise<RuntimeSnapshot>;
+  revokeFirewallAccess: () => Promise<RuntimeSnapshot>;
   quitApp: () => Promise<void>;
 }
 
