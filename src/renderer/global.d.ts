@@ -59,6 +59,7 @@ interface RuntimeSnapshot {
   firewallError: string | null;
   processGuardError: string | null;
   update?: UpdateStatusInfo;
+  autoLaunch?: boolean;
 }
 
 interface IpShieldBridge {
@@ -79,6 +80,8 @@ interface IpShieldBridge {
   applyUpdate: () => Promise<void>;
   dismissUpdate: () => Promise<RuntimeSnapshot>;
   openReleaseUrl: () => Promise<void>;
+  setAutoLaunch: (enabled: boolean) => Promise<RuntimeSnapshot>;
+  toggleAutoLaunch: () => Promise<RuntimeSnapshot>;
   quitApp: () => Promise<void>;
 }
 

@@ -216,3 +216,4 @@ export class AutoLaunchManager {
     return success;
   }
 }
+

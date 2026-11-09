@@ -19,6 +19,8 @@ export interface IpShieldBridge {
   applyUpdate: () => Promise<void>;
   dismissUpdate: () => Promise<RuntimeSnapshot>;
   openReleaseUrl: () => Promise<void>;
+  setAutoLaunch: (enabled: boolean) => Promise<RuntimeSnapshot>;
+  toggleAutoLaunch: () => Promise<RuntimeSnapshot>;
   quitApp: () => Promise<void>;
 }
 
@@ -44,6 +46,8 @@ const api: IpShieldBridge = {
   applyUpdate: () => ipcRenderer.invoke('ipshield:applyUpdate'),
   dismissUpdate: () => ipcRenderer.invoke('ipshield:dismissUpdate'),
   openReleaseUrl: () => ipcRenderer.invoke('ipshield:openReleaseUrl'),
+  setAutoLaunch: enabled => ipcRenderer.invoke('ipshield:setAutoLaunch', enabled),
+  toggleAutoLaunch: () => ipcRenderer.invoke('ipshield:toggleAutoLaunch'),
   quitApp: () => ipcRenderer.invoke('ipshield:quitApp')
 };
 

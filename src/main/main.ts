@@ -398,11 +398,11 @@ function createMainWindow(): void {
   });
 
   const isPackaged = app && typeof app.isPackaged === 'boolean' ? app.isPackaged : false;
-  const isStartedAtLogin =
-    process.argv.includes('--hidden') ||
-    (isPackaged &&
-      typeof app.getLoginItemSettings === 'function' &&
-      (app.getLoginItemSettings().wasOpenedAsHidden || app.getLoginItemSettings().wasOpenedAtLogin));
+  const loginSettings = typeof app.getLoginItemSettings === 'function' ? app.getLoginItemSettings() : null;
+  const wasOpenedAtLogin = Boolean(
+    loginSettings?.wasOpenedAtLogin || (loginSettings as Record<string, unknown> | null)?.wasOpenedAsHidden
+  );
+  const isStartedAtLogin = process.argv.includes('--hidden') || (isPackaged && wasOpenedAtLogin);
 
   mainWindow.once('ready-to-show', () => {
     if (!isStartedAtLogin) {
@@ -538,6 +538,18 @@ function setupIpcHandlers(): void {
     }
   });
 
+  ipcMain.handle('ipshield:setAutoLaunch', async (event, enabled: boolean) => {
+    if (!isAuthorizedSender(event)) throw new Error('Unauthorized sender');
+    autoLaunchManager.setEnabled(Boolean(enabled));
+    return broadcastSnapshot(true);
+  });
+
+  ipcMain.handle('ipshield:toggleAutoLaunch', async event => {
+    if (!isAuthorizedSender(event)) throw new Error('Unauthorized sender');
+    autoLaunchManager.toggle();
+    return broadcastSnapshot(true);
+  });
+
   ipcMain.handle('ipshield:quitApp', async event => {
     if (!isAuthorizedSender(event)) throw new Error('Unauthorized sender');
     await shutdown();
@@ -587,6 +599,12 @@ app.whenReady().then(() => {
   }
 
   tray = new Tray(createShieldTrayIcon('#F59E0B'));
+  if (process.platform !== 'darwin') {
+    tray.on('click', () => {
+      showMainWindow();
+    });
+  }
+  autoLaunchManager.init();
   setupIpcHandlers();
   createMainWindow();
 

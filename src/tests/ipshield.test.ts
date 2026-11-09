@@ -22,6 +22,7 @@ import {
   normalizeSemver,
   selectBestAsset
 } from '../main/updater';
+import { AutoLaunchManager } from '../main/autoLaunch';
 import { ShieldRule } from '../shared/types';
 
 describe('IPShield Test Suite (Vitest)', () => {
@@ -585,6 +586,107 @@ describe('IPShield Test Suite (Vitest)', () => {
     const stReady = await updater.startDownload();
     expect(stReady.phase).toBe('ready');
     expect(stReady.downloadProgress).toBe(100);
+  });
+
+  it('12. AutoLaunchManager Cross-Platform Autostart (macOS, Windows, Linux) & Store Sync', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ipshield-autolaunch-test-'));
+    const configFile = path.join(tmpDir, 'config.json');
+    const store = new Store(configFile, false);
+
+    // 1. Default state: autoLaunch is enabled by default
+    expect(store.getState().settings.autoLaunch).toBe(true);
+
+    // 2. Test macOS (darwin)
+    const darwinCalls: any[] = [];
+    const darwinMgr = new AutoLaunchManager(store, {
+      appName: 'IPShield',
+      platform: 'darwin',
+      adapter: {
+        setLoginItemSettings: settings => darwinCalls.push(settings),
+        getLoginItemSettings: () => ({ openAtLogin: store.getState().settings.autoLaunch ?? true })
+      }
+    });
+
+    expect(darwinMgr.isEnabled()).toBe(true);
+    darwinMgr.init();
+    expect(darwinCalls).toHaveLength(1);
+    expect(darwinCalls[0]).toEqual({ openAtLogin: true, openAsHidden: true });
+
+    // Disable autostart
+    darwinMgr.setEnabled(false);
+    expect(darwinMgr.isEnabled()).toBe(false);
+    expect(store.getState().settings.autoLaunch).toBe(false);
+    expect(darwinCalls[darwinCalls.length - 1]).toEqual({ openAtLogin: false, openAsHidden: true });
+
+    // Enable autostart
+    darwinMgr.setEnabled(true);
+    expect(darwinMgr.isEnabled()).toBe(true);
+    expect(store.getState().settings.autoLaunch).toBe(true);
+
+    // 3. Test Windows (win32)
+    const winCalls: any[] = [];
+    const winMgr = new AutoLaunchManager(store, {
+      appName: 'IPShield',
+      platform: 'win32',
+      adapter: {
+        setLoginItemSettings: settings => winCalls.push(settings),
+        getLoginItemSettings: () => ({ openAtLogin: store.getState().settings.autoLaunch ?? true })
+      }
+    });
+
+    winMgr.setEnabled(true);
+    expect(winCalls[winCalls.length - 1]).toEqual({
+      openAtLogin: true,
+      path: process.execPath,
+      args: ['--hidden']
+    });
+
+    winMgr.setEnabled(false);
+    expect(winCalls[winCalls.length - 1]).toEqual({
+      openAtLogin: false,
+      path: process.execPath,
+      args: ['--hidden']
+    });
+
+    // 4. Test Linux (XDG .desktop in ~/.config/autostart)
+    const linuxAutostartDir = path.join(tmpDir, 'autostart');
+    const linuxMgr = new AutoLaunchManager(store, {
+      appName: 'IPShield',
+      platform: 'linux',
+      linuxAutostartDir,
+      adapter: {
+        isPackaged: true
+      }
+    });
+
+    const desktopFile = path.join(linuxAutostartDir, 'ipshield.desktop');
+    expect(fs.existsSync(desktopFile)).toBe(false);
+
+    // Enable on Linux -> creates .desktop file
+    linuxMgr.setEnabled(true);
+    expect(fs.existsSync(desktopFile)).toBe(true);
+    const desktopContent = fs.readFileSync(desktopFile, 'utf-8');
+    expect(desktopContent).toContain('[Desktop Entry]');
+    expect(desktopContent).toContain('Type=Application');
+    expect(desktopContent).toContain('Name=IPShield');
+    expect(desktopContent).toContain('--hidden');
+    expect(linuxMgr.isLinuxDesktopInstalled()).toBe(true);
+
+    // Disable on Linux -> removes .desktop file
+    linuxMgr.setEnabled(false);
+    expect(fs.existsSync(desktopFile)).toBe(false);
+    expect(linuxMgr.isLinuxDesktopInstalled()).toBe(false);
+
+    // Toggle test
+    const toggledOn = linuxMgr.toggle();
+    expect(toggledOn).toBe(true);
+    expect(fs.existsSync(desktopFile)).toBe(true);
+
+    const toggledOff = linuxMgr.toggle();
+    expect(toggledOff).toBe(false);
+    expect(fs.existsSync(desktopFile)).toBe(false);
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 });
 
