@@ -14,6 +14,11 @@ export interface IpShieldBridge {
   refreshIp: () => Promise<RuntimeSnapshot>;
   enableFirewallAccess: () => Promise<RuntimeSnapshot>;
   revokeFirewallAccess: () => Promise<RuntimeSnapshot>;
+  checkForUpdates: () => Promise<RuntimeSnapshot>;
+  startUpdate: () => Promise<RuntimeSnapshot>;
+  applyUpdate: () => Promise<void>;
+  dismissUpdate: () => Promise<RuntimeSnapshot>;
+  openReleaseUrl: () => Promise<void>;
   quitApp: () => Promise<void>;
 }
 
@@ -34,6 +39,11 @@ const api: IpShieldBridge = {
   refreshIp: () => ipcRenderer.invoke('ipshield:refreshIp'),
   enableFirewallAccess: () => ipcRenderer.invoke('ipshield:enableFirewallAccess'),
   revokeFirewallAccess: () => ipcRenderer.invoke('ipshield:revokeFirewallAccess'),
+  checkForUpdates: () => ipcRenderer.invoke('ipshield:checkForUpdates'),
+  startUpdate: () => ipcRenderer.invoke('ipshield:startUpdate'),
+  applyUpdate: () => ipcRenderer.invoke('ipshield:applyUpdate'),
+  dismissUpdate: () => ipcRenderer.invoke('ipshield:dismissUpdate'),
+  openReleaseUrl: () => ipcRenderer.invoke('ipshield:openReleaseUrl'),
   quitApp: () => ipcRenderer.invoke('ipshield:quitApp')
 };
 

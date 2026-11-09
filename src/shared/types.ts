@@ -49,6 +49,18 @@ export interface RuleRuntimeStatus {
   frozenPids: number[];
 }
 
+export type UpdatePhase = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error';
+
+export interface UpdateStatusInfo {
+  phase: UpdatePhase;
+  currentVersion: string;
+  latestVersion: string | null;
+  releaseUrl: string | null;
+  downloadProgress: number;
+  dismissed: boolean;
+  error: string | null;
+}
+
 export interface RuntimeSnapshot {
   currentIp: string;
   ipChecking: boolean;
@@ -59,5 +71,6 @@ export interface RuntimeSnapshot {
   firewallElevated: boolean;
   firewallError: string | null;
   processGuardError: string | null;
+  update?: UpdateStatusInfo;
 }
 

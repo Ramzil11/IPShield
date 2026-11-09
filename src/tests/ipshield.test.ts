@@ -16,6 +16,12 @@ import { Store } from '../main/store';
 import { DomainFirewall } from '../main/domainFirewall';
 import { ProcessGuard } from '../main/processGuard';
 import { IpMonitor } from '../main/ipMonitor';
+import {
+  AppUpdater,
+  compareSemver,
+  normalizeSemver,
+  selectBestAsset
+} from '../main/updater';
 import { ShieldRule } from '../shared/types';
 
 describe('IPShield Test Suite (Vitest)', () => {
@@ -55,8 +61,14 @@ describe('IPShield Test Suite (Vitest)', () => {
 
   it('3. Store & Per-Rule Static IP Binding Matrix + Corruption Resilience (B-5)', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ipshield-store-test-'));
+    const defaultFile = path.join(tmpDir, 'default-config.json');
+    const storeWithDefaults = new Store(defaultFile, true);
+    expect(storeWithDefaults.getState().rules).toHaveLength(2);
+    expect(storeWithDefaults.getState().rules[0].name).toBe('Claude');
+    expect(storeWithDefaults.getState().rules[1].name).toBe('Codex & ChatGPT');
+
     const configFile = path.join(tmpDir, 'config.json');
-    const store = new Store(configFile);
+    const store = new Store(configFile, false);
 
     expect(store.getState().rules).toHaveLength(0);
 
@@ -114,7 +126,7 @@ describe('IPShield Test Suite (Vitest)', () => {
 
     // Test B-5: Corrupted JSON recovery
     fs.writeFileSync(configFile, '{"rules": "corrupted", "ips": null}', 'utf-8');
-    const recoveredStore = new Store(configFile);
+    const recoveredStore = new Store(configFile, false);
     expect(recoveredStore.getState().rules).toEqual([]);
     expect(recoveredStore.getState().ips).toEqual([]);
 
@@ -227,7 +239,7 @@ describe('IPShield Test Suite (Vitest)', () => {
   it('6. Editable Templates & Combined Processes/Domains Update + Brand Icon Persistence (R-1)', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ipshield-edit-test-'));
     const configFile = path.join(tmpDir, 'config.json');
-    const store = new Store(configFile);
+    const store = new Store(configFile, false);
 
     const claudeRule = store.addRule({
       name: 'Claude',
@@ -252,7 +264,7 @@ describe('IPShield Test Suite (Vitest)', () => {
     expect(updated?.domains).toContain('beta.anthropic.com');
 
     // Verify persisted state on disk survives reload (R-1)
-    const reloaded = new Store(configFile);
+    const reloaded = new Store(configFile, false);
     expect(reloaded.getState().rules).toHaveLength(1);
     expect(reloaded.getState().rules[0].iconDataUrl).toBe(BRAND_ICONS.claude);
     expect(reloaded.getState().rules[0].processes).toEqual([
@@ -460,15 +472,116 @@ describe('IPShield Test Suite (Vitest)', () => {
     expect(fs.existsSync(recoveryFile)).toBe(false);
 
     // R-2: IpMonitor generation increments on interface change and sets fail-closed IP
-    const monitor = new IpMonitor();
+    const monitor = new IpMonitor(() => ['185.212.44.19']);
     const genBefore = monitor.getGeneration();
     monitor.handleInterfaceChange();
     expect(monitor.getGeneration()).toBeGreaterThan(genBefore);
     expect(monitor.getCurrentIp()).toBe('Смена сети...');
 
+    // Windows Happ split-route / DNS cache resilience:
+    // Even if 3 providers return Home IP (91.64.17.203) and only 1 returns VPN IP (185.212.44.19),
+    // parallel resolution always selects the VPN IP without 2.5s/7.5s round-robin flapping.
+    const resolvedWhenVpnOn = await monitor.selectEffectiveIp({
+      cfElectron: { ip: null, isFakeIpRoute: false },
+      cfNode: { ip: '91.64.17.203', isFakeIpRoute: false },
+      ipify: { ip: '91.64.17.203', isFakeIpRoute: false },
+      icanhazip: { ip: '91.64.17.203', isFakeIpRoute: false },
+      aws: { ip: '185.212.44.19', isFakeIpRoute: true }
+    });
+    expect(resolvedWhenVpnOn).toBe('185.212.44.19');
+
+    // Subsequent tick where directIp ('91.64.17.203') is known even without isFakeIpRoute flag:
+    const resolvedNextTick = await monitor.selectEffectiveIp({
+      cfElectron: { ip: null, isFakeIpRoute: false },
+      cfNode: { ip: '185.212.44.19', isFakeIpRoute: false },
+      ipify: { ip: '91.64.17.203', isFakeIpRoute: false },
+      icanhazip: { ip: '91.64.17.203', isFakeIpRoute: false },
+      aws: { ip: '91.64.17.203', isFakeIpRoute: false }
+    });
+    expect(resolvedNextTick).toBe('185.212.44.19');
+
+    // When VPN disconnects and all providers unanimously return Home IP:
+    const resolvedWhenVpnOff = await monitor.selectEffectiveIp({
+      cfElectron: { ip: null, isFakeIpRoute: false },
+      cfNode: { ip: '91.64.17.203', isFakeIpRoute: false },
+      ipify: { ip: '91.64.17.203', isFakeIpRoute: false },
+      icanhazip: { ip: '91.64.17.203', isFakeIpRoute: false },
+      aws: { ip: '91.64.17.203', isFakeIpRoute: false }
+    });
+    expect(resolvedWhenVpnOff).toBe('91.64.17.203');
+
     await guard.unfreezeAll();
     dummyChild.kill('SIGKILL');
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('11. AppUpdater Semver, Asset Selection, 24h Dismiss & Download Flow', async () => {
+    expect(normalizeSemver('v1.0.2')).toBe('1.0.2');
+    expect(normalizeSemver('1.2.10-beta')).toBe('1.2.10');
+    expect(compareSemver('v1.0.2', '1.0.1')).toBe(1);
+    expect(compareSemver('1.0.1', '1.0.1')).toBe(0);
+    expect(compareSemver('1.0.10', '1.0.2')).toBe(1);
+
+    const mockAssets = [
+      { name: 'IPShield-1.0.2-arm64.dmg', browser_download_url: 'https://example.com/mac.dmg' },
+      { name: 'IPShield-1.0.2-arm64-mac.zip', browser_download_url: 'https://example.com/mac.zip' },
+      { name: 'IPShield Portable 1.0.2.exe', browser_download_url: 'https://example.com/port.exe' },
+      { name: 'IPShield Setup 1.0.2.exe', browser_download_url: 'https://example.com/setup.exe' }
+    ];
+
+    expect(selectBestAsset(mockAssets, 'darwin', 'arm64')?.name).toBe('IPShield-1.0.2-arm64-mac.zip');
+    expect(selectBestAsset(mockAssets, 'win32', 'x64')?.name).toBe('IPShield Setup 1.0.2.exe');
+
+    let fakeNow = 1_700_000_000_000;
+    let remoteTag = 'v1.0.2';
+
+    const updater = new AppUpdater({
+      currentVersion: '1.0.1',
+      platform: 'darwin',
+      arch: 'arm64',
+      nowFn: () => fakeNow,
+      fetchReleaseFn: async () => ({
+        tag_name: remoteTag,
+        html_url: `https://github.com/Ramzil11/IPShield/releases/tag/${remoteTag}`,
+        assets: mockAssets
+      }),
+      downloadFileFn: async (_url, destPath, onProgress) => {
+        onProgress(45);
+        onProgress(100);
+        fs.writeFileSync(destPath, 'mock-zip', 'utf-8');
+      },
+      prepareExtractedAppFn: async downloadedPath => `${downloadedPath}.app`
+    });
+
+    const st1 = await updater.checkForUpdates();
+    expect(st1.phase).toBe('available');
+    expect(st1.latestVersion).toBe('1.0.2');
+    expect(st1.dismissed).toBe(false);
+
+    // Dismissing hides the banner for 24 hours
+    const stDismissed = updater.dismissUpdate();
+    expect(stDismissed.dismissed).toBe(true);
+
+    // 12 hours later: still dismissed
+    fakeNow += 12 * 60 * 60 * 1000;
+    expect(updater.getStatus().dismissed).toBe(true);
+
+    // 25 hours later: 24h expired, banner becomes visible again
+    fakeNow += 13 * 60 * 60 * 1000;
+    expect(updater.getStatus().dismissed).toBe(false);
+
+    // Dismiss again, then release a newer version v1.0.3 -> immediately visible
+    updater.dismissUpdate();
+    expect(updater.getStatus().dismissed).toBe(true);
+    remoteTag = 'v1.0.3';
+    const stNewVer = await updater.checkForUpdates();
+    expect(stNewVer.latestVersion).toBe('1.0.3');
+    expect(stNewVer.dismissed).toBe(false);
+
+    // Start download -> transitions to ready
+    const stReady = await updater.startDownload();
+    expect(stReady.phase).toBe('ready');
+    expect(stReady.downloadProgress).toBe(100);
   });
 });
 

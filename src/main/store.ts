@@ -2,10 +2,55 @@ import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
 import { AllowedIpEntry, PersistedState, ShieldRule } from '../shared/types';
+import { BRAND_ICONS } from '../shared/brandIcons';
 import {
   validateAndSanitizeRule,
   validateAndSanitizeIpEntry
 } from '../shared/validation';
+
+export function getDefaultRules(): ShieldRule[] {
+  return [
+    {
+      id: 'default-claude',
+      name: 'Claude',
+      type: 'preset',
+      presetKey: 'claude',
+      iconDataUrl: BRAND_ICONS.claude,
+      appPaths: process.platform === 'darwin' ? ['/Applications/Claude.app'] : [],
+      processes: ['Claude', 'Claude.exe', 'claude', '@anthropic-ai/claude-code'],
+      domains: [
+        'claude.ai',
+        'www.claude.ai',
+        'anthropic.com',
+        'www.anthropic.com',
+        'api.anthropic.com',
+        'console.anthropic.com',
+        'statsig.anthropic.com'
+      ]
+    },
+    {
+      id: 'default-codex',
+      name: 'Codex & ChatGPT',
+      type: 'preset',
+      presetKey: 'codex',
+      iconDataUrl: BRAND_ICONS.codex,
+      appPaths:
+        process.platform === 'darwin'
+          ? ['/Applications/ChatGPT.app', '/Applications/Codex.app']
+          : [],
+      processes: ['codex', '@openai/codex', 'ChatGPT', 'ChatGPT.exe'],
+      domains: [
+        'chatgpt.com',
+        'www.chatgpt.com',
+        'openai.com',
+        'www.openai.com',
+        'api.openai.com',
+        'platform.openai.com',
+        'auth.openai.com'
+      ]
+    }
+  ];
+}
 
 const DEFAULT_STATE: PersistedState = {
   rules: [],
@@ -21,7 +66,7 @@ export class Store {
   private filePath: string;
   private data: PersistedState;
 
-  constructor(customFilePath?: string) {
+  constructor(customFilePath?: string, populateDefaults: boolean = true) {
     if (customFilePath) {
       const dir = path.dirname(customFilePath);
       if (!fs.existsSync(dir)) {
@@ -38,10 +83,10 @@ export class Store {
       }
       this.filePath = path.join(userDataPath, 'ipshield-config.json');
     }
-    this.data = this.load();
+    this.data = this.load(populateDefaults);
   }
 
-  private load(): PersistedState {
+  private load(populateDefaults: boolean = true): PersistedState {
     try {
       if (fs.existsSync(this.filePath)) {
         const raw = fs.readFileSync(this.filePath, 'utf-8');
@@ -79,7 +124,16 @@ export class Store {
     } catch (err) {
       console.error('[Store] Failed to load config, resetting to safe defaults:', err);
     }
-    return JSON.parse(JSON.stringify(DEFAULT_STATE));
+    
+    const initialRules = populateDefaults ? getDefaultRules() : [];
+    const initialState: PersistedState = {
+      rules: initialRules,
+      ips: [],
+      settings: { ...DEFAULT_STATE.settings }
+    };
+    this.data = initialState;
+    this.save();
+    return initialState;
   }
 
   public save(): void {

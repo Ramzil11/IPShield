@@ -24,6 +24,30 @@
 
     <!-- ЭКРАН 1: ГЛАВНАЯ -->
     <main id="view-main" class="main-scroll-view">
+      <!-- Компактная всплывашка обновления (появляется, когда на GitHub есть новая версия) -->
+      <div id="update-banner" class="update-banner state-available hidden">
+        <div class="update-banner-row">
+          <div class="update-banner-left">
+            <span id="update-icon" class="update-icon">⬇</span>
+            <span id="update-label" class="update-label">Доступно обновление</span>
+            <button id="version-link" class="ver-badge" title="Открыть релиз на GitHub">
+              <span id="update-version-text">v1.0.2</span>
+              <span class="ver-badge-arrow">↗</span>
+            </button>
+          </div>
+
+          <div class="update-banner-right">
+            <span id="update-progress-pct" class="update-progress-pct hidden">0%</span>
+            <button id="btn-update-action" class="update-action-btn">Обновить</button>
+            <button id="btn-update-dismiss" class="update-dismiss-btn" title="Скрыть на 24 часа">✕</button>
+          </div>
+        </div>
+
+        <div id="update-progress-wrap" class="update-progress-wrap hidden">
+          <div id="update-progress-fill" class="update-progress-fill"></div>
+        </div>
+      </div>
+
       <!-- Верхняя карточка IP + Кнопка «Разрешить IP» наверху -->
       <div id="ip-card" class="ip-card state-idle">
         <div class="ip-card-top">
@@ -59,13 +83,10 @@
       <!-- Баннер ошибки сканера процессов (ps / PowerShell) -->
       <div id="process-guard-banner" class="error-text hidden"></div>
 
-      <!-- Заголовок правил + кнопки «Отозвать права» и «＋ Добавить» -->
+      <!-- Заголовок правил + кнопка «＋ Добавить» -->
       <div class="section-bar">
         <span class="section-title">Правила</span>
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <button id="btn-revoke-elevate" class="link-btn hidden" title="Отозвать права записи в /etc/hosts">Отозвать права</button>
-          <button id="btn-open-add" class="link-btn">＋ Добавить</button>
-        </div>
+        <button id="btn-open-add" class="link-btn">＋ Добавить</button>
       </div>
 
       <!-- Модальный блок добавления и редактирования правила: переключатель Приложения | Домены + Чипы -->

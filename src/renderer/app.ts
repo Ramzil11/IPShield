@@ -422,23 +422,94 @@ function renderTopCard(): void {
     }
   }
 
-  const hasBlockedDomains = snap.rules.some(
-    r => !snap.ruleStatuses[r.id]?.allowed && r.domains.length > 0
-  );
+  const hasDomainRules = snap.rules.some(r => r.domains.length > 0);
   const banner = el<HTMLDivElement>('elevation-banner');
-  banner.classList.toggle('hidden', !(hasBlockedDomains && !snap.firewallElevated));
-
-  const revokeBtn = el<HTMLButtonElement>('btn-revoke-elevate');
-  revokeBtn.classList.toggle('hidden', !snap.firewallElevated);
+  banner.classList.toggle('hidden', !(hasDomainRules && !snap.firewallElevated));
 
   const procGuardBanner = el<HTMLDivElement>('process-guard-banner');
-  const guardError = snap.processGuardError || snap.firewallError;
+  const guardError =
+    snap.processGuardError || (snap.firewallElevated ? snap.firewallError : null);
   if (guardError) {
     procGuardBanner.textContent = guardError;
     procGuardBanner.classList.remove('hidden');
   } else {
     procGuardBanner.textContent = '';
     procGuardBanner.classList.add('hidden');
+  }
+
+  renderUpdateBanner();
+}
+
+function renderUpdateBanner(): void {
+  const banner = el<HTMLDivElement>('update-banner');
+  if (!banner) return;
+
+  const upd = ui.snapshot?.update;
+  if (
+    !upd ||
+    upd.dismissed ||
+    !upd.latestVersion ||
+    upd.phase === 'idle' ||
+    upd.phase === 'checking'
+  ) {
+    banner.classList.add('hidden');
+    return;
+  }
+
+  banner.classList.remove('hidden');
+
+  const iconEl = el<HTMLSpanElement>('update-icon');
+  const labelEl = el<HTMLSpanElement>('update-label');
+  const verTextEl = el<HTMLSpanElement>('update-version-text');
+  const verLinkBtn = el<HTMLButtonElement>('version-link');
+  const pctEl = el<HTMLSpanElement>('update-progress-pct');
+  const actionBtn = el<HTMLButtonElement>('btn-update-action');
+  const dismissBtn = el<HTMLButtonElement>('btn-update-dismiss');
+  const progressWrap = el<HTMLDivElement>('update-progress-wrap');
+  const progressFill = el<HTMLDivElement>('update-progress-fill');
+
+  const verTag = upd.latestVersion.startsWith('v') ? upd.latestVersion : `v${upd.latestVersion}`;
+  verTextEl.textContent = verTag;
+  verLinkBtn.title = `Открыть релиз ${verTag} на GitHub`;
+
+  if (upd.phase === 'available') {
+    banner.className = 'update-banner state-available';
+    iconEl.innerHTML = '⬇';
+    labelEl.textContent = 'Доступно обновление';
+    pctEl.classList.add('hidden');
+    progressWrap.classList.add('hidden');
+    actionBtn.classList.remove('hidden');
+    actionBtn.textContent = 'Обновить';
+    dismissBtn.classList.remove('hidden');
+  } else if (upd.phase === 'downloading') {
+    banner.className = 'update-banner state-downloading';
+    iconEl.innerHTML = '<span class="spin">↻</span>';
+    labelEl.textContent = 'Скачивание';
+    const pct = Math.max(0, Math.min(100, Math.round(upd.downloadProgress || 0)));
+    pctEl.textContent = `${pct}%`;
+    pctEl.classList.remove('hidden');
+    progressWrap.classList.remove('hidden');
+    progressFill.style.width = `${pct}%`;
+    actionBtn.classList.add('hidden');
+    dismissBtn.classList.add('hidden');
+  } else if (upd.phase === 'ready') {
+    banner.className = 'update-banner state-ready';
+    iconEl.innerHTML = '✓';
+    labelEl.textContent = 'Готово к установке';
+    pctEl.classList.add('hidden');
+    progressWrap.classList.add('hidden');
+    actionBtn.classList.remove('hidden');
+    actionBtn.textContent = 'Перезапустить';
+    dismissBtn.classList.remove('hidden');
+  } else if (upd.phase === 'error') {
+    banner.className = 'update-banner state-error';
+    iconEl.innerHTML = '!';
+    labelEl.textContent = 'Ошибка обновления';
+    pctEl.classList.add('hidden');
+    progressWrap.classList.add('hidden');
+    actionBtn.classList.remove('hidden');
+    actionBtn.textContent = 'Повторить';
+    dismissBtn.classList.remove('hidden');
   }
 }
 
@@ -934,11 +1005,6 @@ async function init(): Promise<void> {
     renderAll();
   };
 
-  el<HTMLButtonElement>('btn-revoke-elevate').onclick = async () => {
-    ui.snapshot = await window.ipshield.revokeFirewallAccess();
-    renderAll();
-  };
-
   el<HTMLButtonElement>('btn-open-add').onclick = () => {
     void openCreateRuleModal();
   };
@@ -1092,6 +1158,35 @@ async function init(): Promise<void> {
     renderAll();
   };
 
+  const versionLinkBtn = el<HTMLButtonElement>('version-link');
+  if (versionLinkBtn) {
+    versionLinkBtn.onclick = () => {
+      void window.ipshield.openReleaseUrl();
+    };
+  }
+
+  const updateActionBtn = el<HTMLButtonElement>('btn-update-action');
+  if (updateActionBtn) {
+    updateActionBtn.onclick = async () => {
+      const phase = ui.snapshot?.update?.phase;
+      if (phase === 'ready') {
+        updateActionBtn.textContent = 'Перезапуск...';
+        await window.ipshield.applyUpdate();
+      } else {
+        ui.snapshot = await window.ipshield.startUpdate();
+        renderAll();
+      }
+    };
+  }
+
+  const updateDismissBtn = el<HTMLButtonElement>('btn-update-dismiss');
+  if (updateDismissBtn) {
+    updateDismissBtn.onclick = async () => {
+      ui.snapshot = await window.ipshield.dismissUpdate();
+      renderAll();
+    };
+  }
+
   window.ipshield.onSnapshotUpdate(snap => {
     const prevSig = ui.snapshot
       ? JSON.stringify({
@@ -1101,7 +1196,8 @@ async function init(): Promise<void> {
           s: ui.snapshot.ruleStatuses,
           e: ui.snapshot.firewallElevated,
           fe: ui.snapshot.firewallError,
-          pe: ui.snapshot.processGuardError
+          pe: ui.snapshot.processGuardError,
+          u: ui.snapshot.update
         })
       : '';
     const nextSig = JSON.stringify({
@@ -1111,7 +1207,8 @@ async function init(): Promise<void> {
       s: snap.ruleStatuses,
       e: snap.firewallElevated,
       fe: snap.firewallError,
-      pe: snap.processGuardError
+      pe: snap.processGuardError,
+      u: snap.update
     });
 
     ui.snapshot = snap;

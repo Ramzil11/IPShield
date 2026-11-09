@@ -1,7 +1,7 @@
 {
   "name": "ipshield",
   "productName": "IPShield",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Strict IP-bound firewall and process guard for Claude, Codex, and custom apps/domains on macOS & Windows",
   "main": "dist/main/main.js",
   "scripts": {

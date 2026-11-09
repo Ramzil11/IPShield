@@ -36,6 +36,18 @@ interface RuleRuntimeStatus {
   frozenPids: number[];
 }
 
+type UpdatePhase = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error';
+
+interface UpdateStatusInfo {
+  phase: UpdatePhase;
+  currentVersion: string;
+  latestVersion: string | null;
+  releaseUrl: string | null;
+  downloadProgress: number;
+  dismissed: boolean;
+  error: string | null;
+}
+
 interface RuntimeSnapshot {
   currentIp: string;
   ipChecking: boolean;
@@ -46,6 +58,7 @@ interface RuntimeSnapshot {
   firewallElevated: boolean;
   firewallError: string | null;
   processGuardError: string | null;
+  update?: UpdateStatusInfo;
 }
 
 interface IpShieldBridge {
@@ -61,6 +74,11 @@ interface IpShieldBridge {
   refreshIp: () => Promise<RuntimeSnapshot>;
   enableFirewallAccess: () => Promise<RuntimeSnapshot>;
   revokeFirewallAccess: () => Promise<RuntimeSnapshot>;
+  checkForUpdates: () => Promise<RuntimeSnapshot>;
+  startUpdate: () => Promise<RuntimeSnapshot>;
+  applyUpdate: () => Promise<void>;
+  dismissUpdate: () => Promise<RuntimeSnapshot>;
+  openReleaseUrl: () => Promise<void>;
   quitApp: () => Promise<void>;
 }
 

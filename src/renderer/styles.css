@@ -45,11 +45,177 @@ body {
 }
 
 .ip-card,
+.update-banner,
 .elevation-banner,
 .section-bar,
 .add-modal,
 .ip-add-box {
   flex-shrink: 0;
+}
+
+/* Compact Update Banner */
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  display: inline-block;
+  animation: spin-slow 1s linear infinite;
+}
+
+.update-banner {
+  border-radius: 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(56, 189, 248, 0.04));
+  margin-bottom: 10px;
+  transition: all 0.2s ease;
+}
+
+.update-banner.state-downloading {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.14), rgba(16, 185, 129, 0.05));
+  border-color: rgba(56, 189, 248, 0.35);
+}
+
+.update-banner.state-ready {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(16, 185, 129, 0.05));
+  border-color: rgba(52, 211, 153, 0.45);
+}
+
+.update-banner.state-error {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.16), rgba(239, 68, 68, 0.04));
+  border-color: rgba(248, 113, 113, 0.38);
+}
+
+.update-banner-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.update-banner-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.update-icon {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sky);
+}
+
+.update-banner.state-ready .update-icon {
+  color: var(--emerald);
+}
+
+.update-banner.state-error .update-icon {
+  color: var(--red);
+}
+
+.update-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.ver-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 7px;
+  background: rgba(56, 189, 248, 0.2);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  color: #7dd3fc;
+  font-family: 'SF Mono', 'JetBrains Mono', 'Menlo', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ver-badge:hover {
+  background: rgba(56, 189, 248, 0.32);
+  border-color: rgba(56, 189, 248, 0.75);
+  color: #e0f2fe;
+}
+
+.ver-badge-arrow {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.update-banner-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.update-progress-pct {
+  font-family: 'SF Mono', 'Menlo', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: #7dd3fc;
+}
+
+.update-action-btn {
+  padding: 4px 11px;
+  border-radius: 8px;
+  border: none;
+  background: var(--sky);
+  color: #000000;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.update-action-btn:hover {
+  opacity: 0.9;
+}
+
+.update-banner.state-ready .update-action-btn {
+  background: var(--emerald);
+}
+
+.update-banner.state-error .update-action-btn {
+  background: var(--red);
+}
+
+.update-dismiss-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.36);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.update-dismiss-btn:hover {
+  color: #ffffff;
+}
+
+.update-progress-wrap {
+  margin-top: 8px;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.update-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--sky), var(--emerald));
+  transition: width 0.15s ease;
 }
 
 /* Header (leaves room on the left for macOS native 🔴🟡🟢 window buttons) */

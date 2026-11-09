@@ -1,11 +1,12 @@
 import path from 'path';
 import fs from 'fs';
 import { pathToFileURL } from 'url';
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, Tray } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, shell, Tray } from 'electron';
 import { Store } from './store';
 import { IpMonitor } from './ipMonitor';
 import { ProcessGuard } from './processGuard';
 import { DomainFirewall } from './domainFirewall';
+import { AppUpdater } from './updater';
 import { scanAvailableApps } from './appScanner';
 import { RuleRuntimeStatus, RuntimeSnapshot, ShieldRule } from '../shared/types';
 import {
@@ -22,9 +23,12 @@ let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
 
 const store = new Store();
-const ipMonitor = new IpMonitor();
+const ipMonitor = new IpMonitor(() => store.getState().ips.map(e => e.ip));
 const processGuard = new ProcessGuard();
 const domainFirewall = new DomainFirewall();
+const appUpdater = new AppUpdater({
+  currentVersion: app && typeof app.getVersion === 'function' ? app.getVersion() : undefined
+});
 
 let cachedFrozenByRule: Record<string, number[]> = {};
 let enforceTimer: NodeJS.Timeout | null = null;
@@ -149,7 +153,8 @@ function buildSnapshot(): RuntimeSnapshot {
     ruleStatuses,
     firewallElevated: domainFirewall.isElevated(),
     firewallError: domainFirewall.getLastError(),
-    processGuardError: processGuard.getLastError()
+    processGuardError: processGuard.getLastError(),
+    update: appUpdater.getStatus()
   };
 }
 
@@ -206,12 +211,19 @@ function updateTrayAppearance(snapshot: RuntimeSnapshot): void {
         void ipMonitor.checkNow(true, true).then(() => runEnforcementCycle());
         showMainWindow();
       }
+    },
+    {
+      label: 'Проверить обновления',
+      click: () => {
+        showMainWindow();
+        void appUpdater.checkForUpdates(true).then(() => broadcastSnapshot(true));
+      }
     }
   ];
 
   if (snapshot.firewallElevated) {
     menuTemplate.push({
-      label: 'Отозвать доступ к hosts',
+      label: 'Отозвать разрешение',
       click: () => {
         void domainFirewall.revokeElevation().then(() => runEnforcementCycle(true));
       }
@@ -242,7 +254,8 @@ function getSnapshotSignature(snapshot: RuntimeSnapshot): string {
     ruleStatuses: snapshot.ruleStatuses,
     firewallElevated: snapshot.firewallElevated,
     firewallError: snapshot.firewallError,
-    processGuardError: snapshot.processGuardError
+    processGuardError: snapshot.processGuardError,
+    update: snapshot.update
   });
 }
 
@@ -457,6 +470,40 @@ function setupIpcHandlers(): void {
     return runEnforcementCycle();
   });
 
+  ipcMain.handle('ipshield:checkForUpdates', async event => {
+    if (!isAuthorizedSender(event)) throw new Error('Unauthorized sender');
+    await appUpdater.checkForUpdates(true);
+    return broadcastSnapshot(true);
+  });
+
+  ipcMain.handle('ipshield:startUpdate', async event => {
+    if (!isAuthorizedSender(event)) throw new Error('Unauthorized sender');
+    void appUpdater.startDownload();
+    return broadcastSnapshot(true);
+  });
+
+  ipcMain.handle('ipshield:applyUpdate', async event => {
+    if (!isAuthorizedSender(event)) throw new Error('Unauthorized sender');
+    await appUpdater.applyUpdateAndRestart(async () => {
+      await cleanupBeforeExit();
+    });
+    app.quit();
+  });
+
+  ipcMain.handle('ipshield:dismissUpdate', async event => {
+    if (!isAuthorizedSender(event)) throw new Error('Unauthorized sender');
+    appUpdater.dismissUpdate();
+    return broadcastSnapshot(true);
+  });
+
+  ipcMain.handle('ipshield:openReleaseUrl', async event => {
+    if (!isAuthorizedSender(event)) throw new Error('Unauthorized sender');
+    const url = appUpdater.getStatus().releaseUrl;
+    if (url && /^https:\/\/github\.com\//i.test(url)) {
+      await shell.openExternal(url);
+    }
+  });
+
   ipcMain.handle('ipshield:quitApp', async event => {
     if (!isAuthorizedSender(event)) throw new Error('Unauthorized sender');
     await shutdown();
@@ -464,8 +511,8 @@ function setupIpcHandlers(): void {
 }
 
 let isShuttingDown = false;
-async function shutdown(): Promise<void> {
-  if (isShuttingDown) return;
+async function cleanupBeforeExit(): Promise<void> {
+  if ( isShuttingDown ) return;
   isShuttingDown = true;
   isQuitting = true;
 
@@ -474,6 +521,7 @@ async function shutdown(): Promise<void> {
     enforceTimer = null;
   }
   ipMonitor.stop();
+  appUpdater.stop();
 
   try {
     await processGuard.unfreezeAll();
@@ -486,7 +534,11 @@ async function shutdown(): Promise<void> {
   } catch (err) {
     console.error('[Main] Failed to clear hosts blocks on shutdown:', err);
   }
+}
 
+async function shutdown(): Promise<void> {
+  if (isShuttingDown) return;
+  await cleanupBeforeExit();
   app.quit();
 }
 
@@ -503,6 +555,11 @@ app.whenReady().then(() => {
   tray = new Tray(createShieldTrayIcon('#F59E0B'));
   setupIpcHandlers();
   createMainWindow();
+
+  appUpdater.onStatusChange(() => {
+    broadcastSnapshot(true);
+  });
+  appUpdater.start();
 
   ipMonitor.onIpChange(() => {
     void runEnforcementCycle();
