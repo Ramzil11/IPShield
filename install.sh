@@ -21,14 +21,24 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 echo "⬇️  Скачивание последней версии для ${ARCH_TAG}..."
 LATEST_RELEASE=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null || true)
-DOWNLOAD_URL=$(echo "$LATEST_RELEASE" | grep -o "https://[^\"]*${ARCH_TAG}[^\"]*mac\.zip" | head -n 1)
+
+if [ "$ARCH_TAG" = "arm64" ]; then
+  DOWNLOAD_URL=$(echo "$LATEST_RELEASE" | grep -o 'https://[^"]*mac\.zip' | grep 'arm64' | head -n 1)
+else
+  # Intel x64: в electron-builder архив для x64 называется IPShield-x.x.x-mac.zip (без arm64)
+  DOWNLOAD_URL=$(echo "$LATEST_RELEASE" | grep -o 'https://[^"]*mac\.zip' | grep -v 'arm64' | head -n 1)
+fi
 
 if [ -z "$DOWNLOAD_URL" ]; then
   DOWNLOAD_URL=$(echo "$LATEST_RELEASE" | grep -o 'https://[^"]*mac\.zip' | head -n 1)
 fi
 
 if [ -z "$DOWNLOAD_URL" ]; then
-  DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/IPShield-1.0.4-${ARCH_TAG}-mac.zip"
+  if [ "$ARCH_TAG" = "arm64" ]; then
+    DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/IPShield-1.0.4-arm64-mac.zip"
+  else
+    DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/IPShield-1.0.4-mac.zip"
+  fi
 fi
 
 curl -fL -# -o "$TMP_DIR/app.zip" "$DOWNLOAD_URL"

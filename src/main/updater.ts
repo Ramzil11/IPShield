@@ -87,12 +87,19 @@ export function selectBestAsset(
 
   if (platform === 'darwin') {
     const zips = assets.filter(a => a.name.toLowerCase().endsWith('.zip'));
-    const archZip = zips.find(a => a.name.toLowerCase().includes(lowerArch));
+    let archZip = zips.find(a => a.name.toLowerCase().includes(lowerArch));
+    if (!archZip && (lowerArch === 'x64' || lowerArch === 'x86_64')) {
+      // electron-builder defaults x64 macOS zip to "${productName}-${version}-mac.zip" without "x64" in filename
+      archZip = zips.find(a => !a.name.toLowerCase().includes('arm64'));
+    }
     if (archZip) return archZip;
     if (zips.length > 0) return zips[0];
 
     const dmgs = assets.filter(a => a.name.toLowerCase().endsWith('.dmg'));
-    const archDmg = dmgs.find(a => a.name.toLowerCase().includes(lowerArch));
+    let archDmg = dmgs.find(a => a.name.toLowerCase().includes(lowerArch));
+    if (!archDmg && (lowerArch === 'x64' || lowerArch === 'x86_64')) {
+      archDmg = dmgs.find(a => !a.name.toLowerCase().includes('arm64'));
+    }
     if (archDmg) return archDmg;
     if (dmgs.length > 0) return dmgs[0];
     return null;
