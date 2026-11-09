@@ -12,8 +12,8 @@
     <a href="https://github.com/Ramzil11/IPShield/releases/latest"><img src="https://img.shields.io/github/v/release/Ramzil11/IPShield?label=Release&color=38BDF8&style=flat-square" alt="Latest Release" /></a>
     <a href="https://github.com/Ramzil11/IPShield/actions"><img src="https://img.shields.io/github/actions/workflow/status/Ramzil11/IPShield/ci-cd.yml?branch=prod&label=CI%2FCD&style=flat-square" alt="CI/CD Status" /></a>
     <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-0078D4?style=flat-square" alt="Platform" />
-    <img src="https://img.shields.io/badge/Electron-33-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron" />
-    <img src="https://img.shields.io/badge/TypeScript-5.6-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
+    <img src="https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron" />
+    <img src="https://img.shields.io/badge/TypeScript-7.0-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-10B981?style=flat-square" alt="MIT License" /></a>
   </p>
 
@@ -142,8 +142,8 @@ flowchart TD
   - **macOS** 12.0 (Monterey) и выше (Apple Silicon `arm64` / Intel `x64`)
   - **Windows** 10 / 11 (`x64`)
 - **Для сборки из исходного кода**:
-  - **Node.js** `>= 18.x`
-  - **npm** `>= 9.x`
+  - **Node.js** `>= 22.x`
+  - **npm** `>= 10.x`
 
 ---
 
