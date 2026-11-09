@@ -50,14 +50,14 @@
 ### macOS
 
 #### Способ 1. В одну команду через Терминал (Рекомендуется)
-Устанавливает последнюю версию в папку «Программы» и сразу снимает системный карантин macOS Gatekeeper:
+Устанавливает последнюю версию в папку «Applications» и снимает системный карантин macOS Gatekeeper:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Ramzil11/IPShield/main/install.sh | bash
 ```
 
 #### Способ 2. Скачать вручную (.dmg)
-1. Скачайте образ **[IPShield-arm64.dmg](https://github.com/Ramzil11/IPShield/releases/latest)** и перетащите `IPShield.app` в **«Программы»**.
-2. Так как приложение бесплатное и без платной подписи Apple Developer ($99/год), macOS при первом запуске может показать предупреждение *«Файл поврежден»*. Чтобы разрешить запуск, выполните в Терминале:
+1. Скачайте образ **[IPShield-arm64.dmg](https://github.com/Ramzil11/IPShield/releases/latest)** и перетащите `IPShield.app` в папку **«Applications»**.
+2. Так как приложение не имеет платной подписки Apple Developer, macOS при первом запуске может показать ошибку *«Файл поврежден»* (*«is damaged»*). Чтобы разрешить запуск, выполните в Терминале:
    ```bash
    xattr -cr /Applications/IPShield.app
    ```
