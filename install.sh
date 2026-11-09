@@ -40,3 +40,4 @@ xattr -cr "${TARGET_DIR}/${APP_NAME}.app"
 echo "✅ ${APP_NAME} успешно установлен в ${TARGET_DIR}/${APP_NAME}.app"
 echo "🚀 Запуск..."
 open -a "${TARGET_DIR}/${APP_NAME}.app"
+
