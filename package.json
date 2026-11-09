@@ -1,7 +1,7 @@
 {
   "name": "ipshield",
   "productName": "IPShield",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Strict IP-bound firewall and process guard for Claude, Codex, and custom apps/domains on macOS & Windows",
   "main": "dist/main/main.js",
   "scripts": {
@@ -12,7 +12,7 @@
     "probe": "node scripts/leak-probe.js",
     "start": "npm run build && node scripts/launch.js",
     "dev": "npm run build && node scripts/launch.js",
-    "pack:mac": "npm run build && electron-builder --mac",
+    "pack:mac": "npm run build && electron-builder --mac --arm64 --x64",
     "pack:win": "npm run build && electron-builder --win"
   },
   "keywords": [
@@ -46,8 +46,20 @@
       "icon": "assets/icon.icns",
       "category": "public.app-category.utilities",
       "target": [
-        "dmg",
-        "zip"
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ]
     },
     "win": {

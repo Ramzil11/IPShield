@@ -82,11 +82,11 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
 
-      - name: Package macOS application (.dmg & .zip)
+      - name: Package macOS application (.dmg & .zip for arm64 and x64 Intel)
         if: matrix.os == 'macos-latest'
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx electron-builder --mac --publish never
+        run: npx electron-builder --mac --arm64 --x64 --publish never
 
       - name: Package Windows application (.exe NSIS & Portable)
         if: matrix.os == 'windows-latest'

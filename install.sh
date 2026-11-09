@@ -7,15 +7,28 @@ TARGET_DIR="/Applications"
 
 echo "🛡️  Установка ${APP_NAME} для macOS..."
 
+ARCH=$(uname -m)
+if [ "$ARCH" = "x86_64" ]; then
+  ARCH_TAG="x64"
+  echo "🖥️  Архитектура: Intel (x64)"
+else
+  ARCH_TAG="arm64"
+  echo "🍏  Архитектура: Apple Silicon (arm64)"
+fi
+
 TMP_DIR=$(mktemp -d /tmp/ipshield-install.XXXXXX)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-echo "⬇️  Скачивание последней версии..."
+echo "⬇️  Скачивание последней версии для ${ARCH_TAG}..."
 LATEST_RELEASE=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null || true)
-DOWNLOAD_URL=$(echo "$LATEST_RELEASE" | grep -o 'https://[^"]*mac\.zip' | head -n 1)
+DOWNLOAD_URL=$(echo "$LATEST_RELEASE" | grep -o "https://[^\"]*${ARCH_TAG}[^\"]*mac\.zip" | head -n 1)
 
 if [ -z "$DOWNLOAD_URL" ]; then
-  DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/IPShield-1.0.2-arm64-mac.zip"
+  DOWNLOAD_URL=$(echo "$LATEST_RELEASE" | grep -o 'https://[^"]*mac\.zip' | head -n 1)
+fi
+
+if [ -z "$DOWNLOAD_URL" ]; then
+  DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/IPShield-1.0.4-${ARCH_TAG}-mac.zip"
 fi
 
 curl -fL -# -o "$TMP_DIR/app.zip" "$DOWNLOAD_URL"

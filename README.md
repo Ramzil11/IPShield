@@ -56,7 +56,10 @@ curl -fsSL https://raw.githubusercontent.com/Ramzil11/IPShield/main/install.sh |
 ```
 
 #### Способ 2. Скачать вручную (.dmg)
-1. Скачайте образ **[IPShield-arm64.dmg](https://github.com/Ramzil11/IPShield/releases/latest)** и перетащите `IPShield.app` в папку **«Applications»**.
+1. Скачайте установочный образ со страницы **[Релизов](https://github.com/Ramzil11/IPShield/releases/latest)** под свой процессор:
+   - **IPShield-arm64.dmg** — для Mac на чипах Apple Silicon (M1, M2, M3, M4)
+   - **IPShield-x64.dmg** — для Mac на процессорах Intel  
+   и перетащите `IPShield.app` в папку **«Applications»**.
 2. Так как приложение не имеет платной подписки Apple Developer, macOS при первом запуске может показать ошибку *«Файл поврежден»* (*«is damaged»*). Чтобы разрешить запуск, выполните в Терминале:
    ```bash
    xattr -cr /Applications/IPShield.app
