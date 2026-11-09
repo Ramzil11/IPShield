@@ -523,14 +523,17 @@ describe('IPShield Test Suite (Vitest)', () => {
     expect(compareSemver('1.0.10', '1.0.2')).toBe(1);
 
     const mockAssets = [
-      { name: 'IPShield-1.0.2-arm64.dmg', browser_download_url: 'https://example.com/mac.dmg' },
-      { name: 'IPShield-1.0.2-arm64-mac.zip', browser_download_url: 'https://example.com/mac.zip' },
-      { name: 'IPShield Portable 1.0.2.exe', browser_download_url: 'https://example.com/port.exe' },
-      { name: 'IPShield Setup 1.0.2.exe', browser_download_url: 'https://example.com/setup.exe' }
+      { name: 'IPShield-1.0.5-arm64.dmg', browser_download_url: 'https://example.com/mac-arm64.dmg' },
+      { name: 'IPShield-1.0.5-arm64-mac.zip', browser_download_url: 'https://example.com/mac-arm64.zip' },
+      { name: 'IPShield-1.0.5-x64.dmg', browser_download_url: 'https://example.com/mac-x64.dmg' },
+      { name: 'IPShield-1.0.5-x64-mac.zip', browser_download_url: 'https://example.com/mac-x64.zip' },
+      { name: 'IPShield-1.0.5-win-x64-portable.exe', browser_download_url: 'https://example.com/port.exe' },
+      { name: 'IPShield-Setup-1.0.5-win-x64.exe', browser_download_url: 'https://example.com/setup.exe' }
     ];
 
-    expect(selectBestAsset(mockAssets, 'darwin', 'arm64')?.name).toBe('IPShield-1.0.2-arm64-mac.zip');
-    expect(selectBestAsset(mockAssets, 'win32', 'x64')?.name).toBe('IPShield Setup 1.0.2.exe');
+    expect(selectBestAsset(mockAssets, 'darwin', 'arm64')?.name).toBe('IPShield-1.0.5-arm64-mac.zip');
+    expect(selectBestAsset(mockAssets, 'darwin', 'x64')?.name).toBe('IPShield-1.0.5-x64-mac.zip');
+    expect(selectBestAsset(mockAssets, 'win32', 'x64')?.name).toBe('IPShield-Setup-1.0.5-win-x64.exe');
 
     let fakeNow = 1_700_000_000_000;
     let remoteTag = 'v1.0.2';

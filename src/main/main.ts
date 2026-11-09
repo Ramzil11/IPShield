@@ -7,6 +7,7 @@ import { IpMonitor } from './ipMonitor';
 import { ProcessGuard } from './processGuard';
 import { DomainFirewall } from './domainFirewall';
 import { AppUpdater } from './updater';
+import { AutoLaunchManager } from './autoLaunch';
 import { scanAvailableApps } from './appScanner';
 import { RuleRuntimeStatus, RuntimeSnapshot, ShieldRule } from '../shared/types';
 import {
@@ -18,11 +19,23 @@ if (app && typeof app.setName === 'function') {
   app.setName('IPShield');
 }
 
+if (app && typeof app.requestSingleInstanceLock === 'function') {
+  const gotTheLock = app.requestSingleInstanceLock();
+  if (!gotTheLock) {
+    app.quit();
+  } else {
+    app.on('second-instance', () => {
+      showMainWindow();
+    });
+  }
+}
+
 let tray: Tray | null = null;
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
 
 const store = new Store();
+const autoLaunchManager = new AutoLaunchManager(store);
 const ipMonitor = new IpMonitor(() => store.getState().ips.map(e => e.ip));
 const processGuard = new ProcessGuard();
 const domainFirewall = new DomainFirewall();
@@ -154,7 +167,8 @@ function buildSnapshot(): RuntimeSnapshot {
     firewallElevated: domainFirewall.isElevated(),
     firewallError: domainFirewall.getLastError(),
     processGuardError: processGuard.getLastError(),
-    update: appUpdater.getStatus()
+    update: appUpdater.getStatus(),
+    autoLaunch: autoLaunchManager.isEnabled()
   };
 }
 
@@ -178,7 +192,8 @@ function updateTrayAppearance(snapshot: RuntimeSnapshot): void {
     statusText = `Открыто ${openCount} из ${totalRules}`;
   }
 
-  const traySignature = `${color}|${statusText}|${snapshot.currentIp}|${snapshot.firewallElevated}`;
+  const autoLaunchEnabled = autoLaunchManager.isEnabled();
+  const traySignature = `${color}|${statusText}|${snapshot.currentIp}|${snapshot.firewallElevated}|${autoLaunchEnabled}`;
   if (traySignature === lastTraySignature) {
     return;
   }
@@ -210,6 +225,15 @@ function updateTrayAppearance(snapshot: RuntimeSnapshot): void {
       click: () => {
         void ipMonitor.checkNow(true, true).then(() => runEnforcementCycle());
         showMainWindow();
+      }
+    },
+    {
+      label: 'Автозапуск при старте системы',
+      type: 'checkbox',
+      checked: autoLaunchEnabled,
+      click: menuItem => {
+        autoLaunchManager.setEnabled(menuItem.checked);
+        broadcastSnapshot(true);
       }
     },
     {
@@ -255,7 +279,8 @@ function getSnapshotSignature(snapshot: RuntimeSnapshot): string {
     firewallElevated: snapshot.firewallElevated,
     firewallError: snapshot.firewallError,
     processGuardError: snapshot.processGuardError,
-    update: snapshot.update
+    update: snapshot.update,
+    autoLaunch: snapshot.autoLaunch
   });
 }
 
@@ -372,8 +397,17 @@ function createMainWindow(): void {
     }
   });
 
+  const isPackaged = app && typeof app.isPackaged === 'boolean' ? app.isPackaged : false;
+  const isStartedAtLogin =
+    process.argv.includes('--hidden') ||
+    (isPackaged &&
+      typeof app.getLoginItemSettings === 'function' &&
+      (app.getLoginItemSettings().wasOpenedAsHidden || app.getLoginItemSettings().wasOpenedAtLogin));
+
   mainWindow.once('ready-to-show', () => {
-    showMainWindow();
+    if (!isStartedAtLogin) {
+      showMainWindow();
+    }
     broadcastSnapshot();
   });
 }

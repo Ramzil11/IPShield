@@ -23,6 +23,7 @@ export interface ShieldSettings {
   processGuardEnabled: boolean;
   domainFirewallEnabled: boolean;
   checkIntervalMs: number;
+  autoLaunch?: boolean;
 }
 
 export interface PersistedState {
@@ -72,5 +73,6 @@ export interface RuntimeSnapshot {
   firewallError: string | null;
   processGuardError: string | null;
   update?: UpdateStatusInfo;
+  autoLaunch?: boolean;
 }
 

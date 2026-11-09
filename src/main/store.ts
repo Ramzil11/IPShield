@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
-import { AllowedIpEntry, PersistedState, ShieldRule } from '../shared/types';
+import { AllowedIpEntry, PersistedState, ShieldRule, ShieldSettings } from '../shared/types';
 import { BRAND_ICONS } from '../shared/brandIcons';
 import {
   validateAndSanitizeRule,
@@ -58,7 +58,8 @@ const DEFAULT_STATE: PersistedState = {
   settings: {
     processGuardEnabled: true,
     domainFirewallEnabled: true,
-    checkIntervalMs: 3000
+    checkIntervalMs: 3000,
+    autoLaunch: true
   }
 };
 
@@ -256,5 +257,14 @@ export class Store {
     this.data.ips = this.data.ips.filter(item => item.ip !== ip.trim());
     this.save();
     return this.getState().ips;
+  }
+
+  public updateSettings(partial: Partial<ShieldSettings>): ShieldSettings {
+    this.data.settings = {
+      ...this.data.settings,
+      ...partial
+    };
+    this.save();
+    return { ...this.data.settings };
   }
 }
