@@ -23,6 +23,7 @@ import {
   selectBestAsset
 } from '../main/updater';
 import { AutoLaunchManager } from '../main/autoLaunch';
+import { scanAvailableApps } from '../main/appScanner';
 import { ShieldRule } from '../shared/types';
 
 describe('IPShield Test Suite (Vitest)', () => {
@@ -687,6 +688,150 @@ describe('IPShield Test Suite (Vitest)', () => {
     expect(fs.existsSync(desktopFile)).toBe(false);
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('13. Gemini / Antigravity Preset Coverage (App, IDE, agy CLI & API Endpoints)', async () => {
+    const detected = await scanAvailableApps();
+    const geminiPreset = detected.find(item => item.id === 'preset-gemini');
+    expect(geminiPreset).toBeDefined();
+    expect(geminiPreset?.name).toBe('Gemini / Antigravity');
+    expect(geminiPreset?.presetKey).toBe('gemini');
+    expect(geminiPreset?.iconDataUrl).toBe(BRAND_ICONS.gemini);
+
+    // Processes cover Gemini CLI, Antigravity App, Antigravity IDE, agy CLI & language servers
+    for (const proc of [
+      'gemini',
+      '@google/gemini-cli',
+      'Antigravity',
+      'Antigravity.exe',
+      'Antigravity IDE',
+      'Antigravity IDE.exe',
+      'antigravity-ide',
+      'agy',
+      'agy.exe',
+      'agy-desktop-helper',
+      'language_server_macos_arm',
+      'language_server_windows_x64.exe',
+      'language_server_linux_x64'
+    ]) {
+      expect(geminiPreset?.processes).toContain(proc);
+    }
+
+    // All preset domains must be valid and include Gemini + Antigravity API endpoints
+    expect(geminiPreset!.domains.length).toBeGreaterThanOrEqual(15);
+    for (const domain of geminiPreset!.domains) {
+      expect(normalizeAndValidateDomain(domain), `Domain ${domain} should be valid`).toBe(domain);
+    }
+    for (const expectedDomain of [
+      'gemini.google.com',
+      'aistudio.google.com',
+      'generativelanguage.googleapis.com',
+      'antigravity.google',
+      'antigravity.google.com',
+      'antigravity-unleash.goog',
+      'antigravity-pa.googleapis.com',
+      'cloudcode-pa.googleapis.com',
+      'daily-cloudcode-pa.googleapis.com',
+      'daily-cloudcode-pa.sandbox.googleapis.com',
+      'autopush-cloudcode-pa.sandbox.googleapis.com',
+      'aicode.googleapis.com',
+      'businessaicode.googleapis.com',
+      'cloudaicompanion.googleapis.com',
+      'geminicloudassist.googleapis.com',
+      'aiplatform.googleapis.com'
+    ]) {
+      expect(geminiPreset?.domains).toContain(expectedDomain);
+    }
+
+    // Verify ProcessGuard freezes Antigravity IDE (Electron binary), Antigravity App, language_server & agy CLI
+    // without touching unrelated Electron apps (e.g. VS Code)
+    const dummyIde = spawn(process.execPath, ['-e', 'setInterval(() => {}, 500)'], { stdio: 'ignore' });
+    const dummyApp = spawn(process.execPath, ['-e', 'setInterval(() => {}, 500)'], { stdio: 'ignore' });
+    const dummyLs = spawn(process.execPath, ['-e', 'setInterval(() => {}, 500)'], { stdio: 'ignore' });
+    const dummyCli = spawn(process.execPath, ['-e', 'setInterval(() => {}, 500)'], { stdio: 'ignore' });
+    const dummyVsCode = spawn(process.execPath, ['-e', 'setInterval(() => {}, 500)'], { stdio: 'ignore' });
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ipshield-antigravity-test-'));
+    const guard = new ProcessGuard({
+      recoveryFilePath: path.join(tmpDir, 'recovery.json'),
+      customProcessLister: async () => [
+        {
+          pid: dummyIde.pid as number,
+          ppid: 1,
+          comm: '/Applications/Antigravity IDE.app/Contents/MacOS/Electron',
+          args: '/Applications/Antigravity IDE.app/Contents/MacOS/Electron'
+        },
+        {
+          pid: dummyApp.pid as number,
+          ppid: 1,
+          comm: '/Applications/Antigravity.app/Contents/MacOS/Antigravity',
+          args: '/Applications/Antigravity.app/Contents/MacOS/Antigravity'
+        },
+        {
+          pid: dummyLs.pid as number,
+          ppid: 1,
+          comm: '/Applications/Antigravity.app/Contents/Resources/bin/language_server',
+          args: '/Applications/Antigravity.app/Contents/Resources/bin/language_server --port 12345'
+        },
+        {
+          pid: dummyCli.pid as number,
+          ppid: 1,
+          comm: '/Users/dev/.local/bin/agy',
+          args: '/Users/dev/.local/bin/agy'
+        },
+        {
+          pid: dummyVsCode.pid as number,
+          ppid: 1,
+          comm: '/Applications/Visual Studio Code.app/Contents/MacOS/Electron',
+          args: '/Applications/Visual Studio Code.app/Contents/MacOS/Electron'
+        }
+      ]
+    });
+
+    try {
+      const rule: ShieldRule = {
+        id: 'rule-gemini-antigravity',
+        name: geminiPreset!.name,
+        type: 'preset',
+        presetKey: 'gemini',
+        iconDataUrl: geminiPreset!.iconDataUrl,
+        appPaths:
+          geminiPreset!.appPaths.length > 0
+            ? geminiPreset!.appPaths
+            : ['Antigravity.app', 'Antigravity IDE.app'],
+        processes: geminiPreset!.processes,
+        domains: geminiPreset!.domains
+      };
+
+      const frozen = await guard.enforce([rule], { 'rule-gemini-antigravity': false });
+      const frozenPids = frozen['rule-gemini-antigravity'] || [];
+      expect(frozenPids).toContain(dummyIde.pid);
+      expect(frozenPids).toContain(dummyApp.pid);
+      expect(frozenPids).toContain(dummyLs.pid);
+      expect(frozenPids).toContain(dummyCli.pid);
+      expect(frozenPids).not.toContain(dummyVsCode.pid);
+
+      // Verify DomainFirewall blocks Antigravity endpoints properly
+      const mockHosts = path.join(tmpDir, 'hosts');
+      fs.writeFileSync(mockHosts, '127.0.0.1 localhost\n', 'utf-8');
+      const firewall = new DomainFirewall(mockHosts, true);
+      await firewall.syncDomains([rule], { 'rule-gemini-antigravity': false });
+      const blockedHosts = fs.readFileSync(mockHosts, 'utf-8');
+      expect(blockedHosts).toContain('0.0.0.0 antigravity.google');
+      expect(blockedHosts).toContain('0.0.0.0 www.antigravity.google');
+      expect(blockedHosts).toContain('0.0.0.0 cloudcode-pa.googleapis.com');
+      expect(blockedHosts).toContain('0.0.0.0 daily-cloudcode-pa.googleapis.com');
+      expect(blockedHosts).toContain('0.0.0.0 aicode.googleapis.com');
+      expect(blockedHosts).toContain('0.0.0.0 antigravity-unleash.goog');
+    } finally {
+      await guard.unfreezeAll();
+      dummyIde.kill('SIGKILL');
+      dummyApp.kill('SIGKILL');
+      dummyLs.kill('SIGKILL');
+      dummyCli.kill('SIGKILL');
+      dummyVsCode.kill('SIGKILL');
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });
 

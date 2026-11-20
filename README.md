@@ -5,7 +5,7 @@
 
   <p>
     <strong>Умный Kill-Switch и сетевой экран для AI-инструментов и десктопных приложений</strong><br />
-    Строгий контроль доступа для <b>Claude Desktop</b>, <b>Claude Code CLI</b>, <b>OpenAI Codex</b>, <b>ChatGPT</b>, <b>Cursor</b>, <b>Perplexity</b>, <b>Gemini</b> и любых пользовательских программ и доменов по статическому IP-адресу.
+    Строгий контроль доступа для <b>Claude Desktop</b>, <b>Claude Code CLI</b>, <b>OpenAI Codex</b>, <b>ChatGPT</b>, <b>Cursor</b>, <b>Perplexity</b>, <b>Gemini / Antigravity</b> и любых пользовательских программ и доменов по статическому IP-адресу.
   </p>
 
   <p>

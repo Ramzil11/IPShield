@@ -12,6 +12,11 @@ interface PresetDefinition {
   presetKey: PresetKey;
   defaultIcon: string;
   macAppNames: string[];
+  /**
+   * macOS bundle names to include in appPaths even if not currently found in /Applications
+   * (important for Electron-based bundles like Antigravity IDE.app whose binary is named `Electron`).
+   */
+  fallbackMacAppBundles?: string[];
   winExeNames: string[];
   processes: string[];
   domains: string[];
@@ -80,17 +85,48 @@ const PRESETS: PresetDefinition[] = [
   },
   {
     id: 'preset-gemini',
-    name: 'Gemini',
-    subtitle: 'Gemini CLI & Web + домены Google AI',
+    name: 'Gemini / Antigravity',
+    subtitle: 'Gemini CLI, Antigravity App/IDE, agy CLI + домены Google AI',
     presetKey: 'gemini',
     defaultIcon: BRAND_ICONS.gemini,
-    macAppNames: ['Gemini.app'],
-    winExeNames: ['Gemini.exe'],
-    processes: ['gemini', '@google/gemini-cli'],
+    macAppNames: ['Gemini.app', 'Antigravity.app', 'Antigravity IDE.app'],
+    fallbackMacAppBundles: ['Antigravity.app', 'Antigravity IDE.app'],
+    winExeNames: ['Gemini.exe', 'Antigravity.exe', 'Antigravity IDE.exe', 'agy.exe'],
+    processes: [
+      'gemini',
+      '@google/gemini-cli',
+      'Antigravity',
+      'Antigravity.exe',
+      'Antigravity IDE',
+      'Antigravity IDE.exe',
+      'antigravity-ide',
+      'agy',
+      'agy.exe',
+      'agy-desktop-helper',
+      'agy-desktop-script',
+      'language_server_macos_arm',
+      'language_server_macos_x64',
+      'language_server_windows_x64.exe',
+      'language_server_linux_x64',
+      'language_server_linux_arm'
+    ],
     domains: [
       'gemini.google.com',
       'aistudio.google.com',
-      'generativelanguage.googleapis.com'
+      'generativelanguage.googleapis.com',
+      'antigravity.google',
+      'antigravity.google.com',
+      'antigravity-unleash.goog',
+      'antigravity-pa.googleapis.com',
+      'cloudcode-pa.googleapis.com',
+      'daily-cloudcode-pa.googleapis.com',
+      'daily-cloudcode-pa.sandbox.googleapis.com',
+      'autopush-cloudcode-pa.sandbox.googleapis.com',
+      'aicode.googleapis.com',
+      'businessaicode.googleapis.com',
+      'cloudaicompanion.googleapis.com',
+      'geminicloudassist.googleapis.com',
+      'aiplatform.googleapis.com'
     ]
   }
 ];
@@ -126,11 +162,26 @@ export async function scanAvailableApps(): Promise<DetectedAppItem[]> {
           if (fs.existsSync(full)) {
             foundPaths.push(full);
             seenAppPaths.add(full);
-            // Preset icons are retained for Claude and Codex; native app icons are used for other apps
-            if (preset.presetKey !== 'claude' && preset.presetKey !== 'codex') {
+            // Preset icons are retained for multi-surface presets (Claude, Codex, Gemini / Antigravity)
+            if (
+              preset.presetKey !== 'claude' &&
+              preset.presetKey !== 'codex' &&
+              preset.presetKey !== 'gemini'
+            ) {
               const nativeIcon = await getNativeIconDataUrl(full);
               if (nativeIcon) resolvedIcon = nativeIcon;
             }
+          }
+        }
+      }
+
+      if (preset.fallbackMacAppBundles) {
+        for (const bundleName of preset.fallbackMacAppBundles) {
+          const alreadyFound = foundPaths.some(
+            p => path.basename(p).toLowerCase() === bundleName.toLowerCase()
+          );
+          if (!alreadyFound) {
+            foundPaths.push(bundleName);
           }
         }
       }

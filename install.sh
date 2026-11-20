@@ -38,9 +38,9 @@ fi
 
 if [ -z "$DOWNLOAD_URL" ]; then
   if [ "$ARCH_TAG" = "arm64" ]; then
-    DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/IPShield-1.0.5-arm64-mac.zip"
+    DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/IPShield-1.0.6-arm64-mac.zip"
   else
-    DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/IPShield-1.0.5-x64-mac.zip"
+    DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/IPShield-1.0.6-x64-mac.zip"
   fi
 fi
 
